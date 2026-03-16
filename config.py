@@ -26,6 +26,7 @@ class Config:
         
         # База данных
         self.DB_FILE = os.getenv('DB_FILE', 'helpgrailed_bot.db')
+        self.DATABASE_URL = os.getenv('DATABASE_URL')  # для PostgreSQL на Render
         
         # Реферальный бонус
         self.REFERRAL_BONUS = float(os.getenv('REFERRAL_BONUS', '0.1'))
@@ -113,6 +114,7 @@ ADMIN_IDS = config.ADMIN_IDS
 ADMIN_CONTACT = config.ADMIN_CONTACT
 SUPPORT_CONTACT = config.SUPPORT_CONTACT
 DB_FILE = config.DB_FILE
+DATABASE_URL = config.DATABASE_URL  # Добавлено для PostgreSQL
 REFERRAL_BONUS = config.REFERRAL_BONUS
 LANGUAGES = config.LANGUAGES
 CATEGORIES = config.CATEGORIES

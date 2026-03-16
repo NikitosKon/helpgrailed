@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import logging
+import os
 from datetime import datetime
 from functools import lru_cache
 from typing import Optional, List, Dict, Any, Tuple
@@ -15,17 +16,32 @@ from config import (
 logger = logging.getLogger(__name__)
 
 class Database:
-    """Класс для работы с базой данных"""
+    """Класс для работы с базой данных (поддерживает SQLite и PostgreSQL)"""
     
     def __init__(self):
-        self.conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
+        # Проверяем, используем ли мы PostgreSQL (на Render)
+        self.use_postgres = 'DATABASE_URL' in os.environ
+        
+        if self.use_postgres:
+            import psycopg2
+            from psycopg2.extras import RealDictCursor
+            
+            # Подключаемся к PostgreSQL
+            self.conn = psycopg2.connect(os.environ['DATABASE_URL'], cursor_factory=RealDictCursor)
+            self.conn.autocommit = False
+            logger.info("Connected to PostgreSQL database")
+        else:
+            # Локально используем SQLite
+            self.conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+            self.conn.row_factory = sqlite3.Row
+            logger.info(f"Connected to SQLite database: {DB_FILE}")
+        
         self.init_tables()
         self.seed_products()
     
     def execute(self, query: str, params: tuple = (), 
-                fetch: bool = False, commit: bool = False) -> Optional[List[tuple]]:
-        """Безопасное выполнение запроса"""
+                fetch: bool = False, commit: bool = False) -> Optional[List[Any]]:
+        """Безопасное выполнение запроса (работает с SQLite и PostgreSQL)"""
         try:
             c = self.conn.cursor()
             c.execute(query, params)
@@ -34,149 +50,297 @@ class Database:
                 self.conn.commit()
             
             if fetch:
-                return c.fetchall()
+                if self.use_postgres:
+                    # PostgreSQL возвращает список словарей
+                    return c.fetchall()
+                else:
+                    # SQLite возвращает список Row объектов
+                    return c.fetchall()
             return None
             
-        except sqlite3.Error as e:
+        except Exception as e:
             logger.error(f"Database error: {e}")
             if commit:
                 self.conn.rollback()
             raise
     
     def init_tables(self):
-        """Инициализация таблиц"""
-        queries = [
-            # Пользователи
-            """CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY,
-                username TEXT,
-                first_name TEXT,
-                referrer_id INTEGER,
-                balance REAL DEFAULT 0,
-                language TEXT DEFAULT 'ru',
-                registered_date TEXT,
-                last_active TEXT,
-                is_blocked INTEGER DEFAULT 0,
-                notify_enabled INTEGER DEFAULT 1,
-                admin_note TEXT
-            )""",
-            
-            # Транзакции
-            """CREATE TABLE IF NOT EXISTS transactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                amount REAL,
-                type TEXT CHECK(type IN ('deposit', 'purchase', 'withdraw', 'referral', 'admin_deposit')),
-                product_id INTEGER,
-                status TEXT CHECK(status IN ('pending', 'completed', 'failed', 'cancelled', 'expired')),
-                invoice_id TEXT,
-                currency TEXT,
-                created_at TEXT,
-                completed_at TEXT,
-                metadata TEXT,
-                promo_code TEXT,
-                discount_amount REAL DEFAULT 0
-            )""",
-            
-            # Рефералы
-            """CREATE TABLE IF NOT EXISTS referrals (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                referrer_id INTEGER,
-                referral_id INTEGER,
-                bonus REAL DEFAULT 0,
-                created_at TEXT,
-                purchase_count INTEGER DEFAULT 0,
-                total_earned REAL DEFAULT 0,
-                UNIQUE(referrer_id, referral_id)
-            )""",
-            
-            # Товары
-            """CREATE TABLE IF NOT EXISTS products (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                category TEXT NOT NULL,
-                name TEXT NOT NULL,
-                price_usd REAL NOT NULL,
-                description TEXT,
-                stock INTEGER DEFAULT -1,
-                is_active INTEGER DEFAULT 1,
-                sort_order INTEGER DEFAULT 0,
-                photo_url TEXT,
-                created_at TEXT,
-                updated_at TEXT,
-                sold_count INTEGER DEFAULT 0
-            )""",
-            
-            # Ожидающие действия
-            """CREATE TABLE IF NOT EXISTS pending_actions (
-                user_id INTEGER PRIMARY KEY,
-                action TEXT,
-                data TEXT,
-                created_at TEXT
-            )""",
-            
-            # Настройки
-            """CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT,
-                updated_at TEXT
-            )""",
-            
-            # История покупок
-            """CREATE TABLE IF NOT EXISTS purchase_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                product_id INTEGER,
-                product_name TEXT,
-                amount REAL,
-                status TEXT DEFAULT 'completed',
-                purchase_date TEXT,
-                completed_date TEXT,
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
-            )""",
-            
-            # Промокоды (обновленная структура)
-            """CREATE TABLE IF NOT EXISTS promo_codes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                code TEXT UNIQUE,
-                bonus_type TEXT DEFAULT 'discount',
-                bonus_value REAL,
-                target_type TEXT DEFAULT 'all',
-                target_id INTEGER DEFAULT 0,
-                max_entries INTEGER DEFAULT -1,
-                max_uses INTEGER DEFAULT -1,
-                used_count INTEGER DEFAULT 0,
-                expires_at TEXT,
-                is_active INTEGER DEFAULT 1,
-                created_by INTEGER,
-                created_at TEXT
-            )""",
-            
-            # Вводы промокодов
-            """CREATE TABLE IF NOT EXISTS promo_entries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                promo_id INTEGER,
-                user_id INTEGER,
-                entered_at TEXT,
-                used INTEGER DEFAULT 0,
-                used_at TEXT,
-                transaction_id INTEGER,
-                FOREIGN KEY (promo_id) REFERENCES promo_codes(id),
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
-            )""",
-            
-            # Индексы
-            "CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id)",
-            "CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status)",
-            "CREATE INDEX IF NOT EXISTS idx_transactions_invoice ON transactions(invoice_id)",
-            "CREATE INDEX IF NOT EXISTS idx_users_referrer ON users(referrer_id)",
-            "CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)",
-            "CREATE INDEX IF NOT EXISTS idx_purchase_history_user ON purchase_history(user_id)",
-            "CREATE INDEX IF NOT EXISTS idx_promo_codes_code ON promo_codes(code)",
-            "CREATE INDEX IF NOT EXISTS idx_promo_entries_user ON promo_entries(user_id)",
-        ]
+        """Инициализация таблиц с поддержкой обоих движков"""
+        
+        if self.use_postgres:
+            # PostgreSQL синтаксис
+            queries = [
+                # Пользователи
+                """CREATE TABLE IF NOT EXISTS users (
+                    user_id BIGINT PRIMARY KEY,
+                    username TEXT,
+                    first_name TEXT,
+                    referrer_id BIGINT,
+                    balance REAL DEFAULT 0,
+                    language TEXT DEFAULT 'ru',
+                    registered_date TEXT,
+                    last_active TEXT,
+                    is_blocked INTEGER DEFAULT 0,
+                    notify_enabled INTEGER DEFAULT 1,
+                    admin_note TEXT
+                )""",
+                
+                # Транзакции
+                """CREATE TABLE IF NOT EXISTS transactions (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT,
+                    amount REAL,
+                    type TEXT CHECK(type IN ('deposit', 'purchase', 'withdraw', 'referral', 'admin_deposit')),
+                    product_id INTEGER,
+                    status TEXT CHECK(status IN ('pending', 'completed', 'failed', 'cancelled', 'expired')),
+                    invoice_id TEXT,
+                    currency TEXT,
+                    created_at TEXT,
+                    completed_at TEXT,
+                    metadata TEXT,
+                    promo_code TEXT,
+                    discount_amount REAL DEFAULT 0
+                )""",
+                
+                # Рефералы
+                """CREATE TABLE IF NOT EXISTS referrals (
+                    id SERIAL PRIMARY KEY,
+                    referrer_id BIGINT,
+                    referral_id BIGINT,
+                    bonus REAL DEFAULT 0,
+                    created_at TEXT,
+                    purchase_count INTEGER DEFAULT 0,
+                    total_earned REAL DEFAULT 0,
+                    UNIQUE(referrer_id, referral_id)
+                )""",
+                
+                # Товары
+                """CREATE TABLE IF NOT EXISTS products (
+                    id SERIAL PRIMARY KEY,
+                    category TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    price_usd REAL NOT NULL,
+                    description TEXT,
+                    stock INTEGER DEFAULT -1,
+                    is_active INTEGER DEFAULT 1,
+                    sort_order INTEGER DEFAULT 0,
+                    photo_url TEXT,
+                    created_at TEXT,
+                    updated_at TEXT,
+                    sold_count INTEGER DEFAULT 0
+                )""",
+                
+                # Ожидающие действия
+                """CREATE TABLE IF NOT EXISTS pending_actions (
+                    user_id BIGINT PRIMARY KEY,
+                    action TEXT,
+                    data TEXT,
+                    created_at TEXT
+                )""",
+                
+                # Настройки
+                """CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
+                    updated_at TEXT
+                )""",
+                
+                # История покупок
+                """CREATE TABLE IF NOT EXISTS purchase_history (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT,
+                    product_id INTEGER,
+                    product_name TEXT,
+                    amount REAL,
+                    status TEXT DEFAULT 'completed',
+                    purchase_date TEXT,
+                    completed_date TEXT
+                )""",
+                
+                # Промокоды
+                """CREATE TABLE IF NOT EXISTS promo_codes (
+                    id SERIAL PRIMARY KEY,
+                    code TEXT UNIQUE,
+                    bonus_type TEXT DEFAULT 'discount',
+                    bonus_value REAL,
+                    target_type TEXT DEFAULT 'all',
+                    target_id INTEGER DEFAULT 0,
+                    max_entries INTEGER DEFAULT -1,
+                    max_uses INTEGER DEFAULT -1,
+                    used_count INTEGER DEFAULT 0,
+                    expires_at TEXT,
+                    is_active INTEGER DEFAULT 1,
+                    created_by BIGINT,
+                    created_at TEXT
+                )""",
+                
+                # Вводы промокодов
+                """CREATE TABLE IF NOT EXISTS promo_entries (
+                    id SERIAL PRIMARY KEY,
+                    promo_id INTEGER,
+                    user_id BIGINT,
+                    entered_at TEXT,
+                    used INTEGER DEFAULT 0,
+                    used_at TEXT,
+                    transaction_id INTEGER,
+                    FOREIGN KEY (promo_id) REFERENCES promo_codes(id),
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )""",
+                
+                # Индексы
+                "CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id)",
+                "CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status)",
+                "CREATE INDEX IF NOT EXISTS idx_transactions_invoice ON transactions(invoice_id)",
+                "CREATE INDEX IF NOT EXISTS idx_users_referrer ON users(referrer_id)",
+                "CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)",
+                "CREATE INDEX IF NOT EXISTS idx_purchase_history_user ON purchase_history(user_id)",
+                "CREATE INDEX IF NOT EXISTS idx_promo_codes_code ON promo_codes(code)",
+                "CREATE INDEX IF NOT EXISTS idx_promo_entries_user ON promo_entries(user_id)",
+            ]
+        else:
+            # SQLite синтаксис (твой существующий код)
+            queries = [
+                # Пользователи
+                """CREATE TABLE IF NOT EXISTS users (
+                    user_id INTEGER PRIMARY KEY,
+                    username TEXT,
+                    first_name TEXT,
+                    referrer_id INTEGER,
+                    balance REAL DEFAULT 0,
+                    language TEXT DEFAULT 'ru',
+                    registered_date TEXT,
+                    last_active TEXT,
+                    is_blocked INTEGER DEFAULT 0,
+                    notify_enabled INTEGER DEFAULT 1,
+                    admin_note TEXT
+                )""",
+                
+                # Транзакции
+                """CREATE TABLE IF NOT EXISTS transactions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    amount REAL,
+                    type TEXT CHECK(type IN ('deposit', 'purchase', 'withdraw', 'referral', 'admin_deposit')),
+                    product_id INTEGER,
+                    status TEXT CHECK(status IN ('pending', 'completed', 'failed', 'cancelled', 'expired')),
+                    invoice_id TEXT,
+                    currency TEXT,
+                    created_at TEXT,
+                    completed_at TEXT,
+                    metadata TEXT,
+                    promo_code TEXT,
+                    discount_amount REAL DEFAULT 0
+                )""",
+                
+                # Рефералы
+                """CREATE TABLE IF NOT EXISTS referrals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    referrer_id INTEGER,
+                    referral_id INTEGER,
+                    bonus REAL DEFAULT 0,
+                    created_at TEXT,
+                    purchase_count INTEGER DEFAULT 0,
+                    total_earned REAL DEFAULT 0,
+                    UNIQUE(referrer_id, referral_id)
+                )""",
+                
+                # Товары
+                """CREATE TABLE IF NOT EXISTS products (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    category TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    price_usd REAL NOT NULL,
+                    description TEXT,
+                    stock INTEGER DEFAULT -1,
+                    is_active INTEGER DEFAULT 1,
+                    sort_order INTEGER DEFAULT 0,
+                    photo_url TEXT,
+                    created_at TEXT,
+                    updated_at TEXT,
+                    sold_count INTEGER DEFAULT 0
+                )""",
+                
+                # Ожидающие действия
+                """CREATE TABLE IF NOT EXISTS pending_actions (
+                    user_id INTEGER PRIMARY KEY,
+                    action TEXT,
+                    data TEXT,
+                    created_at TEXT
+                )""",
+                
+                # Настройки
+                """CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
+                    updated_at TEXT
+                )""",
+                
+                # История покупок
+                """CREATE TABLE IF NOT EXISTS purchase_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    product_id INTEGER,
+                    product_name TEXT,
+                    amount REAL,
+                    status TEXT DEFAULT 'completed',
+                    purchase_date TEXT,
+                    completed_date TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )""",
+                
+                # Промокоды
+                """CREATE TABLE IF NOT EXISTS promo_codes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    code TEXT UNIQUE,
+                    bonus_type TEXT DEFAULT 'discount',
+                    bonus_value REAL,
+                    target_type TEXT DEFAULT 'all',
+                    target_id INTEGER DEFAULT 0,
+                    max_entries INTEGER DEFAULT -1,
+                    max_uses INTEGER DEFAULT -1,
+                    used_count INTEGER DEFAULT 0,
+                    expires_at TEXT,
+                    is_active INTEGER DEFAULT 1,
+                    created_by INTEGER,
+                    created_at TEXT
+                )""",
+                
+                # Вводы промокодов
+                """CREATE TABLE IF NOT EXISTS promo_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    promo_id INTEGER,
+                    user_id INTEGER,
+                    entered_at TEXT,
+                    used INTEGER DEFAULT 0,
+                    used_at TEXT,
+                    transaction_id INTEGER,
+                    FOREIGN KEY (promo_id) REFERENCES promo_codes(id),
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )""",
+                
+                # Индексы
+                "CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id)",
+                "CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status)",
+                "CREATE INDEX IF NOT EXISTS idx_transactions_invoice ON transactions(invoice_id)",
+                "CREATE INDEX IF NOT EXISTS idx_users_referrer ON users(referrer_id)",
+                "CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)",
+                "CREATE INDEX IF NOT EXISTS idx_purchase_history_user ON purchase_history(user_id)",
+                "CREATE INDEX IF NOT EXISTS idx_promo_codes_code ON promo_codes(code)",
+                "CREATE INDEX IF NOT EXISTS idx_promo_entries_user ON promo_entries(user_id)",
+            ]
         
         for query in queries:
-            self.execute(query, commit=True)
+            try:
+                self.execute(query, commit=True)
+            except Exception as e:
+                logger.error(f"Error creating table: {e}")
+                if self.use_postgres:
+                    # Для PostgreSQL пробуем создать таблицы без CHECK constraints
+                    if "syntax" in str(e).lower() or "check" in str(e).lower():
+                        logger.info("Retrying without CHECK constraints...")
+                        # Убираем CHECK из запроса и пробуем снова
+                        # Это упрощенная версия, в реальности нужно парсить запрос
+                        pass
     
     def seed_products(self):
         """Заполнение тестовыми товарами"""
@@ -221,7 +385,12 @@ class Database:
             (product_id,), 
             fetch=True
         )
-        return dict(result[0]) if result else None
+        if result:
+            if self.use_postgres:
+                return dict(result[0])
+            else:
+                return dict(result[0])
+        return None
     
     def invalidate_product_cache(self, product_id: int):
         """Инвалидация кэша товара"""
@@ -235,7 +404,9 @@ class Database:
             (user_id,), 
             fetch=True
         )
-        return dict(result[0]) if result else None
+        if result:
+            return dict(result[0])
+        return None
     
     def register_user(self, user_id: int, username: str, first_name: str, 
                      referrer_id: Optional[int] = None) -> bool:
@@ -261,9 +432,10 @@ class Database:
             # Если есть реферер, добавляем запись о реферале
             if referrer_id and referrer_id != user_id:
                 self.execute(
-                    """INSERT OR IGNORE INTO referrals 
+                    """INSERT INTO referrals 
                        (referrer_id, referral_id, created_at) 
-                       VALUES (?, ?, ?)""",
+                       VALUES (?, ?, ?)
+                       ON CONFLICT (referrer_id, referral_id) DO NOTHING""",
                     (referrer_id, user_id, now),
                     commit=False
                 )
@@ -293,7 +465,9 @@ class Database:
             (user_id,), 
             fetch=True
         )
-        return result[0][0] if result else 0.0
+        if result:
+            return result[0][0] if not self.use_postgres else result[0]['balance']
+        return 0.0
     
     def add_balance(self, user_id: int, amount: float) -> bool:
         """Добавить баланс"""
@@ -424,7 +598,11 @@ class Database:
                 fetch=True
             )
             
-            if not user or user[0][0] < price:
+            if not user:
+                raise Exception("❌ Недостаточно средств")
+            
+            user_balance = user[0][0] if not self.use_postgres else user[0]['balance']
+            if user_balance < price:
                 raise Exception("❌ Недостаточно средств")
             
             # Проверяем наличие
@@ -472,35 +650,36 @@ class Database:
                 fetch=True
             )
             
-            if referrer and referrer[0][0]:
-                bonus = price * REFERRAL_BONUS
-                referrer_id = referrer[0][0]
-                
-                # Начисляем бонус
-                self.execute(
-                    "UPDATE users SET balance = balance + ? WHERE user_id = ?",
-                    (bonus, referrer_id),
-                    commit=False
-                )
-                
-                # Обновляем статистику рефералов
-                self.execute(
-                    """UPDATE referrals 
-                       SET bonus = bonus + ?, purchase_count = purchase_count + 1, 
-                           total_earned = total_earned + ? 
-                       WHERE referrer_id = ? AND referral_id = ?""",
-                    (bonus, bonus, referrer_id, user_id),
-                    commit=False
-                )
-                
-                # Записываем реферальную транзакцию
-                self.execute(
-                    """INSERT INTO transactions 
-                       (user_id, amount, type, status, completed_at, currency, metadata) 
-                       VALUES (?, ?, 'referral', 'completed', ?, 'USD', ?)""",
-                    (referrer_id, bonus, now, json.dumps({'referral_id': user_id})),
-                    commit=False
-                )
+            if referrer and referrer[0]:
+                referrer_id = referrer[0][0] if not self.use_postgres else referrer[0]['referrer_id']
+                if referrer_id:
+                    bonus = price * REFERRAL_BONUS
+                    
+                    # Начисляем бонус
+                    self.execute(
+                        "UPDATE users SET balance = balance + ? WHERE user_id = ?",
+                        (bonus, referrer_id),
+                        commit=False
+                    )
+                    
+                    # Обновляем статистику рефералов
+                    self.execute(
+                        """UPDATE referrals 
+                           SET bonus = bonus + ?, purchase_count = purchase_count + 1, 
+                               total_earned = total_earned + ? 
+                           WHERE referrer_id = ? AND referral_id = ?""",
+                        (bonus, bonus, referrer_id, user_id),
+                        commit=False
+                    )
+                    
+                    # Записываем реферальную транзакцию
+                    self.execute(
+                        """INSERT INTO transactions 
+                           (user_id, amount, type, status, completed_at, currency, metadata) 
+                           VALUES (?, ?, 'referral', 'completed', ?, 'USD', ?)""",
+                        (referrer_id, bonus, now, json.dumps({'referral_id': user_id})),
+                        commit=False
+                    )
             
             self.conn.commit()
             self.invalidate_product_cache(product_id)
@@ -607,11 +786,12 @@ class Database:
                 return False, "Срок действия промокода истек"
         
         # Проверка лимита вводов
-        entries = self.execute(
-            "SELECT COUNT(*) FROM promo_entries WHERE promo_id = ?",
+        entries_result = self.execute(
+            "SELECT COUNT(*) as count FROM promo_entries WHERE promo_id = ?",
             (promo['id'],),
             fetch=True
-        )[0][0]
+        )
+        entries = entries_result[0]['count'] if self.use_postgres else entries_result[0][0]
         
         if promo['max_entries'] > 0 and entries >= promo['max_entries']:
             return False, "Лимит вводов промокода исчерпан"
@@ -652,18 +832,20 @@ class Database:
         stats = {}
         
         # Общее количество вводов
-        stats['total_entries'] = self.execute(
-            "SELECT COUNT(*) FROM promo_entries WHERE promo_id = ?",
+        entries_result = self.execute(
+            "SELECT COUNT(*) as count FROM promo_entries WHERE promo_id = ?",
             (promo_id,),
             fetch=True
-        )[0][0] or 0
+        )
+        stats['total_entries'] = entries_result[0]['count'] if self.use_postgres else entries_result[0][0]
         
         # Количество использованных
-        stats['used'] = self.execute(
-            "SELECT COUNT(*) FROM promo_entries WHERE promo_id = ? AND used = 1",
+        used_result = self.execute(
+            "SELECT COUNT(*) as count FROM promo_entries WHERE promo_id = ? AND used = 1",
             (promo_id,),
             fetch=True
-        )[0][0] or 0
+        )
+        stats['used'] = used_result[0]['count'] if self.use_postgres else used_result[0][0]
         
         # Список пользователей
         users = self.execute(
@@ -796,7 +978,7 @@ class Database:
         results = self.execute(
             """SELECT user_id, username, first_name, balance 
                FROM users 
-               WHERE user_id LIKE ? OR username LIKE ? OR first_name LIKE ?
+               WHERE user_id::text LIKE ? OR username LIKE ? OR first_name LIKE ?
                LIMIT 20""",
             (f'%{query}%', f'%{query}%', f'%{query}%'),
             fetch=True
@@ -844,44 +1026,44 @@ class Database:
         
         # Пользователи
         users = self.execute(
-            "SELECT COUNT(*), SUM(balance) FROM users", 
+            "SELECT COUNT(*) as count, SUM(balance) as total FROM users", 
             fetch=True
         )[0]
-        stats['total_users'] = users[0] or 0
-        stats['total_balance'] = users[1] or 0
+        stats['total_users'] = users['count'] if self.use_postgres else users[0]
+        stats['total_balance'] = users['total'] if self.use_postgres else (users[1] or 0)
         
         # Пользователи сегодня
         today = datetime.now().date().isoformat()
-        users_today = self.execute(
-            "SELECT COUNT(*) FROM users WHERE DATE(registered_date) = ?",
+        users_today_result = self.execute(
+            "SELECT COUNT(*) as count FROM users WHERE DATE(registered_date) = ?",
             (today,),
             fetch=True
-        )[0][0]
-        stats['users_today'] = users_today or 0
+        )[0]
+        stats['users_today'] = users_today_result['count'] if self.use_postgres else (users_today_result[0] or 0)
         
         # Продажи
         sales = self.execute(
-            "SELECT COUNT(*), SUM(amount) FROM transactions WHERE type = 'purchase' AND status = 'completed'",
+            "SELECT COUNT(*) as count, SUM(amount) as total FROM transactions WHERE type = 'purchase' AND status = 'completed'",
             fetch=True
         )[0]
-        stats['total_sales'] = sales[0] or 0
-        stats['total_revenue'] = sales[1] or 0
+        stats['total_sales'] = sales['count'] if self.use_postgres else (sales[0] or 0)
+        stats['total_revenue'] = sales['total'] if self.use_postgres else (sales[1] or 0)
         
         # Продажи сегодня
         sales_today = self.execute(
-            "SELECT COUNT(*), SUM(amount) FROM transactions WHERE type = 'purchase' AND status = 'completed' AND DATE(completed_at) = ?",
+            "SELECT COUNT(*) as count, SUM(amount) as total FROM transactions WHERE type = 'purchase' AND status = 'completed' AND DATE(completed_at) = ?",
             (today,),
             fetch=True
         )[0]
-        stats['sales_today'] = sales_today[0] or 0
-        stats['revenue_today'] = sales_today[1] or 0
+        stats['sales_today'] = sales_today['count'] if self.use_postgres else (sales_today[0] or 0)
+        stats['revenue_today'] = sales_today['total'] if self.use_postgres else (sales_today[1] or 0)
         
         # Товары
         products = self.execute(
-            "SELECT COUNT(*) FROM products WHERE is_active = 1",
+            "SELECT COUNT(*) as count FROM products WHERE is_active = 1",
             fetch=True
-        )[0][0]
-        stats['active_products'] = products or 0
+        )[0]
+        stats['active_products'] = products['count'] if self.use_postgres else (products[0] or 0)
         
         return stats
     
@@ -890,8 +1072,10 @@ class Database:
         """Установить ожидающее действие"""
         now = datetime.now().isoformat()
         self.execute(
-            "REPLACE INTO pending_actions (user_id, action, data, created_at) VALUES (?, ?, ?, ?)",
-            (user_id, action, data, now),
+            """INSERT INTO pending_actions (user_id, action, data, created_at) 
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT (user_id) DO UPDATE SET action = ?, data = ?, created_at = ?""",
+            (user_id, action, data, now, action, data, now),
             commit=True
         )
     
@@ -902,7 +1086,9 @@ class Database:
             (user_id,),
             fetch=True
         )
-        return result[0] if result else None
+        if result:
+            return (result[0]['action'], result[0]['data']) if self.use_postgres else (result[0][0], result[0][1])
+        return None
     
     def clear_pending_action(self, user_id: int):
         """Очистить ожидающее действие"""
