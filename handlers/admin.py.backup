@@ -1,0 +1,431 @@
+import os
+import json
+import logging
+from uuid import uuid4
+from datetime import datetime
+
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+
+from config import ADMIN_IDS, CATEGORIES
+from database import Database
+
+logger = logging.getLogger(__name__)
+db = Database()
+
+
+async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data: str):
+    """Главный обработчик админ-панели"""
+    query = update.callback_query
+    user = query.from_user
+
+    if user.id not in ADMIN_IDS:
+        await query.answer("⛔ Доступ запрещён", show_alert=True)
+        return
+
+    if data == 'admin':
+        keyboard = [
+            [InlineKeyboardButton("📊 Статистика", callback_data='admin_stats')],
+            [InlineKeyboardButton("📦 Управление товарами", callback_data='admin_products')],
+            [InlineKeyboardButton("👥 Пользователи", callback_data='admin_users')],
+            [InlineKeyboardButton("📈 Продажи", callback_data='admin_sales')],
+            [InlineKeyboardButton("👑 Управление админами", callback_data='admin_admins')],
+            [InlineKeyboardButton("◀️ Назад", callback_data='menu')]
+        ]
+        await query.edit_message_text(
+            "👑 <b>Админ-панель</b>",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='HTML'
+        )
+
+    elif data == 'admin_stats':
+        await admin_stats(update, context)
+
+    elif data == 'admin_products':
+        await admin_products_menu(update, context)
+
+    elif data == 'admin_list_products':
+        await admin_list_products(update, context)
+
+    elif data == 'admin_add_product':
+        await admin_add_product_start(update, context)
+
+    elif data == 'admin_edit_product':
+        await admin_edit_product_list(update, context)
+
+    elif data.startswith('admin_edit_') and len(data.split('_')) == 3:
+        try:
+            pid = int(data.split('_')[2])
+            await admin_edit_product_start(update, context, pid)
+        except ValueError:
+            await query.answer("Некорректный ID товара", show_alert=True)
+
+    elif data == 'admin_delete_product':
+        await admin_delete_product_list(update, context)
+
+    elif data.startswith('admin_delete_'):
+        try:
+            pid = int(data.split('_')[2])
+            await admin_delete_product_confirm(update, context, pid)
+        except ValueError:
+            await query.answer("Некорректный ID товара", show_alert=True)
+
+    elif data == 'admin_debug':
+        await admin_debug(update, context)
+
+    elif data == 'admin_users':
+        await admin_users(update, context)
+
+    elif data == 'admin_sales':
+        await admin_sales(update, context)
+
+    elif data == 'admin_admins':
+        await admin_manage_admins(update, context)
+
+    elif data == 'admin_add_admin':
+        await admin_add_admin_start(update, context)
+
+    elif data == 'admin_remove_admin':
+        await admin_remove_admin(update, context)
+
+    elif data.startswith('admin_remove_'):
+        try:
+            admin_id = int(data.split('_')[2])
+            await admin_remove_confirm(update, context, admin_id)
+        except ValueError:
+            await query.answer("Некорректный ID администратора", show_alert=True)
+
+
+# ────────────────────────────────────────────────
+# Статистика
+# ────────────────────────────────────────────────
+
+async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+
+    users_total = db.execute("SELECT COUNT(*) FROM users", fetch=True)[0][0]
+    users_today = db.execute(
+        "SELECT COUNT(*) FROM users WHERE DATE(registered_date) = DATE(?)",
+        (datetime.now().date().isoformat(),),
+        fetch=True
+    )[0][0]
+
+    purchases_total = db.execute(
+        "SELECT COUNT(*) FROM transactions WHERE type = 'purchase' AND status = 'completed'",
+        fetch=True
+    )[0][0]
+
+    revenue = db.execute(
+        "SELECT SUM(amount) FROM transactions WHERE type = 'purchase' AND status = 'completed'",
+        fetch=True
+    )[0][0] or 0
+
+    revenue_today = db.execute(
+        "SELECT SUM(amount) FROM transactions WHERE type = 'purchase' AND status = 'completed' "
+        "AND DATE(completed_at) = DATE(?)",
+        (datetime.now().date().isoformat(),),
+        fetch=True
+    )[0][0] or 0
+
+    text = (
+        f"📊 <b>Статистика</b>\n\n"
+        f"👥 Всего пользователей: {users_total}\n"
+        f"➕ Новых сегодня: {users_today}\n\n"
+        f"📦 Всего покупок: {purchases_total}\n"
+        f"💰 Общий доход: ${revenue:.2f}\n"
+        f"📈 Доход сегодня: ${revenue_today:.2f}"
+    )
+
+    keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+
+
+# ────────────────────────────────────────────────
+# Управление товарами
+# ────────────────────────────────────────────────
+
+async def admin_products_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+
+    keyboard = [
+        [InlineKeyboardButton("➕ Добавить товар", callback_data='admin_add_product')],
+        [InlineKeyboardButton("✏️ Редактировать товар", callback_data='admin_edit_product')],
+        [InlineKeyboardButton("❌ Удалить товар", callback_data='admin_delete_product')],
+        [InlineKeyboardButton("📋 Список товаров", callback_data='admin_list_products')],
+        [InlineKeyboardButton("🐛 Отладка", callback_data='admin_debug')],
+        [InlineKeyboardButton("◀️ Назад", callback_data='admin')]
+    ]
+
+    await query.edit_message_text(
+        "📦 <b>Управление товарами</b>",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )
+
+
+async def admin_list_products(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+
+    products = db.get_products(show_all=True)
+    if not products:
+        await query.edit_message_text("📭 Товаров нет")
+        return
+
+    text = "📋 <b>Список товаров:</b>\n\n"
+    for prod in products:
+        pid, cat, name, price, _, stock, is_active, sort, *_ = prod
+        status = "✅" if is_active else "❌"
+        stock_str = '∞' if stock < 0 else str(stock)
+        text += f"{status} ID {pid}: {name}\n   Кат: {cat}, ${price:.2f}, {stock_str} шт.\n"
+
+    if len(text) > 4000:
+        text = text[:3970] + "... (слишком много товаров)"
+
+    keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin_products')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+
+
+async def admin_add_product_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = query.from_user
+
+    # Очищаем старые данные, если были
+    for key in list(context.user_data.keys()):
+        if key.startswith('add_prod_'):
+            del context.user_data[key]
+
+    db.set_pending_action(user.id, 'admin_add_product_name')
+
+    await query.edit_message_text(
+        "➕ <b>Добавление товара</b>\n\nВведите название товара:",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data='admin_products')]]),
+        parse_mode='HTML'
+    )
+
+
+async def download_telegram_photo(file_id: str, context: ContextTypes.DEFAULT_TYPE) -> str | None:
+    try:
+        file = await context.bot.get_file(file_id)
+        os.makedirs('product_photos', exist_ok=True)
+        ext = file.file_path.split('.')[-1] if '.' in file.file_path else 'jpg'
+        filename = f"product_photos/{uuid4()}.{ext}"
+        await file.download_to_drive(filename)
+        return filename
+    except Exception as e:
+        logger.error(f"Ошибка скачивания фото: {e}")
+        return None
+
+
+async def handle_admin_photo_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    pending = db.get_pending_action(user.id)
+    if not pending or pending[0] != 'admin_add_product_photo_waiting':
+        return
+
+    if update.message.photo:
+        photo = update.message.photo[-1]
+        photo_path = await download_telegram_photo(photo.file_id, context)
+
+        if photo_path:
+            context.user_data['add_prod_photo_url'] = photo_path
+            db.set_pending_action(user.id, 'admin_add_product_stock')
+            await update.message.reply_text(
+                "✅ Фото сохранено\n\n"
+                "Введите количество на складе:\n"
+                "• Число (например: 10)\n"
+                "• -1 для бесконечного запаса"
+            )
+        else:
+            await update.message.reply_text("❌ Ошибка сохранения фото. Попробуйте ещё раз или /skip")
+
+    elif update.message.text == '/skip':
+        context.user_data['add_prod_photo_url'] = None
+        db.set_pending_action(user.id, 'admin_add_product_stock')
+        await update.message.reply_text(
+            "✅ Фото пропущено\n\n"
+            "Введите количество на складе:\n"
+            "• Число (например: 10)\n"
+            "• -1 для бесконечного запаса"
+        )
+    else:
+        await update.message.reply_text("❌ Отправьте фото или напишите /skip")
+
+
+async def handle_admin_add_product_input(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, text: str):
+    user = update.effective_user
+    text = text.strip()
+
+    if action == 'admin_add_product_name':
+        context.user_data['add_prod_name'] = text
+        db.set_pending_action(user.id, 'admin_add_product_category')
+        await update.message.reply_text(
+            f"✅ Название: {text}\n\n"
+            f"Введите категорию товара:\n"
+            f"Доступные: {', '.join(CATEGORIES.keys())}"
+        )
+
+    elif action == 'admin_add_product_category':
+        if text not in CATEGORIES:
+            await update.message.reply_text(f"❌ Неверная категория. Доступны: {', '.join(CATEGORIES.keys())}")
+            return
+        context.user_data['add_prod_category'] = text
+        db.set_pending_action(user.id, 'admin_add_product_price')
+        await update.message.reply_text("✅ Категория сохранена\n\nВведите цену в $ (например 45.99):")
+
+    elif action == 'admin_add_product_price':
+        try:
+            price = float(text.replace(',', '.'))
+            context.user_data['add_prod_price'] = price
+            db.set_pending_action(user.id, 'admin_add_product_desc')
+            await update.message.reply_text("✅ Цена сохранена\n\nВведите описание (или /skip):")
+        except ValueError:
+            await update.message.reply_text("❌ Введите корректное число (например 45.99)")
+
+    elif action == 'admin_add_product_desc':
+        desc = None if text == '/skip' else text
+        context.user_data['add_prod_desc'] = desc
+        db.set_pending_action(user.id, 'admin_add_product_photo_waiting')
+        await update.message.reply_text(
+            "✅ Описание сохранено\n\n"
+            "📸 Отправьте фото товара\n"
+            "(или напишите /skip для пропуска)",
+            parse_mode='HTML'
+        )
+
+    elif action == 'admin_add_product_stock':
+        try:
+            stock = int(text)
+            context.user_data['add_prod_stock'] = stock
+            db.set_pending_action(user.id, 'admin_add_product_sort')
+            await update.message.reply_text(
+                "✅ Запас сохранён\n\n"
+                "Введите порядок сортировки (целое число, меньше = выше в списке):"
+            )
+        except ValueError:
+            await update.message.reply_text("❌ Введите целое число (например 10 или -1)")
+
+    elif action == 'admin_add_product_sort':
+        try:
+            sort_order = int(text)
+
+            required = ['add_prod_name', 'add_prod_category', 'add_prod_price', 'add_prod_stock']
+            if not all(k in context.user_data for k in required):
+                await update.message.reply_text("❌ Данные потеряны. Начните добавление заново.")
+                db.clear_pending_action(user.id)
+                context.user_data.clear()
+                return
+
+            db.add_product(
+                category=context.user_data['add_prod_category'],
+                name=context.user_data['add_prod_name'],
+                price=float(context.user_data['add_prod_price']),
+                description=context.user_data.get('add_prod_desc'),
+                stock=int(context.user_data['add_prod_stock']),
+                sort_order=sort_order,
+                photo_url=context.user_data.get('add_prod_photo_url')
+            )
+
+            db.clear_pending_action(user.id)
+            context.user_data.clear()
+
+async def handle_admin_edit_input(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, text: str):
+    """Обработка ввода при редактировании товара"""
+    user = update.effective_user
+    parts = action.split('_')
+
+    if len(parts) < 4:
+        db.clear_pending_action(user.id)
+        return
+
+    try:
+        pid = int(parts[2])
+        field = parts[3]
+    except ValueError:
+        db.clear_pending_action(user.id)
+        return
+
+    prod = db.get_product(pid)
+    if not prod:
+        await update.message.reply_text("❌ Товар не найден")
+        db.clear_pending_action(user.id)
+        return
+
+    if field == 'name':
+        context.user_data['edit_prod_name'] = text if text != '/skip' else prod[2]
+        db.set_pending_action(user.id, f'admin_edit_{pid}_category')
+        await update.message.reply_text("Введите новую категорию (или /skip):")
+
+    elif field == 'category':
+        new_cat = text if text != '/skip' else prod[1]
+        if text != '/skip' and new_cat not in CATEGORIES:
+            await update.message.reply_text(f"Неверная категория. Доступны: {', '.join(CATEGORIES.keys())}")
+            return
+        context.user_data['edit_prod_category'] = new_cat
+        db.set_pending_action(user.id, f'admin_edit_{pid}_price')
+        await update.message.reply_text(f"Категория: {new_cat}\n\nНовая цена (или /skip):")
+
+    elif field == 'price':
+        try:
+            new_price = float(text) if text != '/skip' else prod[3]
+            context.user_data['edit_prod_price'] = new_price
+            db.set_pending_action(user.id, f'admin_edit_{pid}_desc')
+            await update.message.reply_text("Новое описание (или /skip):")
+        except ValueError:
+            await update.message.reply_text("Введите число для цены")
+
+    elif field == 'desc':
+        new_desc = text if text != '/skip' else (prod[4] or '')
+        context.user_data['edit_prod_desc'] = new_desc
+        db.set_pending_action(user.id, f'admin_edit_{pid}_stock')
+        await update.message.reply_text("Новый запас (или /skip):")
+
+    elif field == 'stock':
+        try:
+            new_stock = int(text) if text != '/skip' else prod[5]
+            context.user_data['edit_prod_stock'] = new_stock
+            db.set_pending_action(user.id, f'admin_edit_{pid}_sort')
+            await update.message.reply_text("Новый порядок сортировки (или /skip):")
+        except ValueError:
+            await update.message.reply_text("Введите целое число")
+
+    elif field == 'sort':
+        try:
+            new_sort = int(text) if text != '/skip' else prod[7]  # sort_order обычно индекс 7
+            db.update_product(
+                pid,
+                context.user_data.get('edit_prod_category', prod[1]),
+                context.user_data.get('edit_prod_name', prod[2]),
+                context.user_data.get('edit_prod_price', prod[3]),
+                context.user_data.get('edit_prod_desc', prod[4]),
+                context.user_data.get('edit_prod_stock', prod[5]),
+                new_sort,
+                prod[6] if len(prod) > 7 else 1  # is_active
+            )
+            db.clear_pending_action(user.id)
+            context.user_data.clear()
+            await update.message.reply_text(f"✅ Товар ID {pid} обновлён!")
+        except Exception as e:
+            await update.message.reply_text(f"Ошибка обновления: {str(e)}")
+            logger.exception("Ошибка редактирования товара")
+
+            await update.message.reply_text(
+                "🎉 Товар успешно добавлен!",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("Добавить ещё", callback_data="admin_add_product")],
+                    [InlineKeyboardButton("К списку товаров", callback_data="admin_list_products")],
+                    [InlineKeyboardButton("Админ-меню", callback_data="admin")]
+                ])
+            )
+
+        except ValueError:
+            await update.message.reply_text("❌ Порядок сортировки — целое число")
+        except Exception as e:
+            logger.exception("Ошибка при сохранении товара")
+            await update.message.reply_text(f"❌ Ошибка сохранения: {str(e)}")
+
+
+# Остальные функции (редактирование, удаление, админы и т.д.) оставил без изменений,
+# так как они не содержали критических ошибок в предоставленном коде.
+# Если нужно доработать и их — скажи.
+
+# ... (вставьте сюда все остальные функции без изменений: admin_edit_*, admin_delete_*, admin_manage_admins и т.д.)

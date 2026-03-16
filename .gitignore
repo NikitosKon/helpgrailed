@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+
+# Database
+*.db
+*.sqlite3
+*.db-journal
+
+# Logs
+*.log
+bot.log
+
+# Environment
+.env
+.venv
+venv/
+env/
+
+# Project files
+product_photos/
+admins.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
