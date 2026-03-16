@@ -110,10 +110,10 @@ async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
     )
     
     keyboard = [
-        [InlineKeyboardButton(get_text('buy', price=price), callback_data=f'buy_{product_id}')],
-        [InlineKeyboardButton(get_text('back'), callback_data=f'cat_{cat}')],
-        [InlineKeyboardButton(get_text('back'), callback_data='menu')]
-    ]
+    [InlineKeyboardButton(get_text('buy', price=price), callback_data=f'buy_{product_id}')],
+    [InlineKeyboardButton("◀️ Назад к категории", callback_data=f'cat_{cat}')],
+    [InlineKeyboardButton("🏠 Главное меню", callback_data='menu')]
+]
     
     await query.edit_message_text(
         text, 
