@@ -38,6 +38,124 @@ class Database:
         
         self.init_tables()
         self.seed_products()
+
+def init_tables(self):
+    """Инициализация таблиц"""
+    queries = [
+        # Пользователи
+        """CREATE TABLE IF NOT EXISTS users (
+            user_id BIGINT PRIMARY KEY,
+            username TEXT,
+            first_name TEXT,
+            referrer_id BIGINT,
+            balance REAL DEFAULT 0,
+            language TEXT DEFAULT 'ru',
+            registered_date TEXT,
+            last_active TEXT,
+            is_blocked INTEGER DEFAULT 0,
+            notify_enabled INTEGER DEFAULT 1,
+            admin_note TEXT
+        )""",
+        
+        # Транзакции
+        """CREATE TABLE IF NOT EXISTS transactions (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT,
+            amount REAL,
+            type TEXT,
+            product_id INTEGER,
+            status TEXT,
+            invoice_id TEXT,
+            currency TEXT,
+            created_at TEXT,
+            completed_at TEXT,
+            metadata TEXT,
+            promo_code TEXT,
+            discount_amount REAL DEFAULT 0
+        )""",
+        
+        # Рефералы
+        """CREATE TABLE IF NOT EXISTS referrals (
+            id SERIAL PRIMARY KEY,
+            referrer_id BIGINT,
+            referral_id BIGINT,
+            bonus REAL DEFAULT 0,
+            created_at TEXT,
+            purchase_count INTEGER DEFAULT 0,
+            total_earned REAL DEFAULT 0,
+            UNIQUE(referrer_id, referral_id)
+        )""",
+        
+        # Товары
+        """CREATE TABLE IF NOT EXISTS products (
+            id SERIAL PRIMARY KEY,
+            category TEXT NOT NULL,
+            name TEXT NOT NULL,
+            price_usd REAL NOT NULL,
+            description TEXT,
+            stock INTEGER DEFAULT -1,
+            is_active INTEGER DEFAULT 1,
+            sort_order INTEGER DEFAULT 0,
+            photo_url TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            sold_count INTEGER DEFAULT 0
+        )""",
+        
+        # Ожидающие действия
+        """CREATE TABLE IF NOT EXISTS pending_actions (
+            user_id BIGINT PRIMARY KEY,
+            action TEXT,
+            data TEXT,
+            created_at TEXT
+        )""",
+        
+        # История покупок
+        """CREATE TABLE IF NOT EXISTS purchase_history (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT,
+            product_id INTEGER,
+            product_name TEXT,
+            amount REAL,
+            status TEXT DEFAULT 'completed',
+            purchase_date TEXT,
+            completed_date TEXT
+        )""",
+        
+        # Промокоды
+        """CREATE TABLE IF NOT EXISTS promo_codes (
+            id SERIAL PRIMARY KEY,
+            code TEXT UNIQUE,
+            bonus_type TEXT DEFAULT 'discount',
+            bonus_value REAL,
+            target_type TEXT DEFAULT 'all',
+            target_id INTEGER DEFAULT 0,
+            max_entries INTEGER DEFAULT -1,
+            max_uses INTEGER DEFAULT -1,
+            used_count INTEGER DEFAULT 0,
+            expires_at TEXT,
+            is_active INTEGER DEFAULT 1,
+            created_by BIGINT,
+            created_at TEXT
+        )""",
+        
+        # Вводы промокодов
+        """CREATE TABLE IF NOT EXISTS promo_entries (
+            id SERIAL PRIMARY KEY,
+            promo_id INTEGER,
+            user_id BIGINT,
+            entered_at TEXT,
+            used INTEGER DEFAULT 0,
+            used_at TEXT,
+            transaction_id INTEGER
+        )""",
+    ]
+    
+    for query in queries:
+        try:
+            self.execute(query, commit=True)
+        except Exception as e:
+            logger.error(f"Error creating table: {e}")
     
 def execute(self, query: str, params: tuple = (), 
             fetch: bool = False, commit: bool = False) -> Optional[List[Any]]:
