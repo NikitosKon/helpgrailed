@@ -61,15 +61,28 @@ async def check_pending_payments(context: ContextTypes.DEFAULT_TYPE):
     
     try:
         now = datetime.now()
+        ten_minutes_ago = (now - timedelta(minutes=10)).isoformat()
         
         # 1. Удаляем старые неоплаченные инвойсы (старше 10 минут)
-        old_pending = db.execute(
-            """SELECT * FROM transactions 
-               WHERE status = 'pending' 
-               AND type = 'deposit'
-               AND datetime(created_at) < datetime('now', '-10 minutes')""",
-            fetch=True
-        )
+        if db.use_postgres:
+            # PostgreSQL запрос
+            old_pending = db.execute(
+                """SELECT * FROM transactions 
+                   WHERE status = 'pending' 
+                   AND type = 'deposit'
+                   AND created_at < %s""",
+                (ten_minutes_ago,),
+                fetch=True
+            )
+        else:
+            # SQLite запрос
+            old_pending = db.execute(
+                """SELECT * FROM transactions 
+                   WHERE status = 'pending' 
+                   AND type = 'deposit'
+                   AND datetime(created_at) < datetime('now', '-10 minutes')""",
+                fetch=True
+            )
         
         if old_pending:
             logger.info(f"Found {len(old_pending)} expired payments")
@@ -77,22 +90,32 @@ async def check_pending_payments(context: ContextTypes.DEFAULT_TYPE):
                 trans = dict(trans)
                 # Обновляем статус на 'expired'
                 db.execute(
-                    """UPDATE transactions 
-                       SET status = 'expired' 
-                       WHERE id = ?""",
+                    "UPDATE transactions SET status = 'expired' WHERE id = %s" if db.use_postgres else "UPDATE transactions SET status = 'expired' WHERE id = ?",
                     (trans['id'],),
                     commit=True
                 )
                 logger.info(f"Payment {trans['invoice_id']} marked as expired (older than 10 min)")
         
         # 2. Проверяем актуальные pending транзакции (не старше 10 минут)
-        pending = db.execute(
-            """SELECT * FROM transactions 
-               WHERE status = 'pending' 
-               AND type = 'deposit'
-               AND datetime(created_at) >= datetime('now', '-10 minutes')""",
-            fetch=True
-        )
+        if db.use_postgres:
+            # PostgreSQL запрос
+            pending = db.execute(
+                """SELECT * FROM transactions 
+                   WHERE status = 'pending' 
+                   AND type = 'deposit'
+                   AND created_at >= %s""",
+                (ten_minutes_ago,),
+                fetch=True
+            )
+        else:
+            # SQLite запрос
+            pending = db.execute(
+                """SELECT * FROM transactions 
+                   WHERE status = 'pending' 
+                   AND type = 'deposit'
+                   AND datetime(created_at) >= datetime('now', '-10 minutes')""",
+                fetch=True
+            )
         
         if not pending:
             logger.info("No active pending payments found")
@@ -113,9 +136,7 @@ async def check_pending_payments(context: ContextTypes.DEFAULT_TYPE):
                     db.add_balance(trans['user_id'], trans['amount'])
                     
                     db.execute(
-                        """UPDATE transactions 
-                           SET status = 'completed', completed_at = ? 
-                           WHERE id = ?""",
+                        "UPDATE transactions SET status = 'completed', completed_at = %s WHERE id = %s" if db.use_postgres else "UPDATE transactions SET status = 'completed', completed_at = ? WHERE id = ?",
                         (datetime.now().isoformat(), trans['id']),
                         commit=True
                     )
