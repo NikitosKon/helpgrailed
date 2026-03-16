@@ -9,7 +9,6 @@ def get_text(key, **kwargs):
 
 def main_menu(user_id):
     """Главное меню (только inline кнопки, без текстовых)"""
-    # Получаем баланс пользователя
     balance = db.get_balance(user_id)
     
     keyboard = [
@@ -21,7 +20,6 @@ def main_menu(user_id):
         [InlineKeyboardButton(get_text('referral'), callback_data='referral')],
     ]
     
-    # Добавляем кнопку админки если пользователь админ
     if user_id in ADMIN_IDS:
         keyboard.append([InlineKeyboardButton("👑 Админ-панель", callback_data='admin')])
     
@@ -54,7 +52,7 @@ def currency_menu():
         name = CRYPTO_CURRENCIES.get(currency, currency)
         btn = InlineKeyboardButton(name, callback_data=f'curr_{currency}')
         row.append(btn)
-        if i % 2 == 0:  # по 2 в ряд
+        if i % 2 == 0:
             keyboard.append(row)
             row = []
     if row:
