@@ -39,44 +39,44 @@ class Database:
         self.init_tables()
         self.seed_products()
     
-def execute(self, query: str, params: tuple = (), 
-            fetch: bool = False, commit: bool = False) -> Optional[List[Any]]:
-    """Безопасное выполнение запроса (работает с SQLite и PostgreSQL)"""
-    try:
-        c = self.conn.cursor()
-        
-        # Для PostgreSQL заменяем ? на %s
-        if self.use_postgres:
-            query = query.replace('?', '%s')
+    def execute(self, query: str, params: tuple = (), 
+                fetch: bool = False, commit: bool = False) -> Optional[List[Any]]:
+        """Безопасное выполнение запроса (работает с SQLite и PostgreSQL)"""
+        try:
+            c = self.conn.cursor()
             
-        c.execute(query, params)
-        
-        if commit:
-            self.conn.commit()
-        
-        if fetch:
+            # Для PostgreSQL заменяем ? на %s
             if self.use_postgres:
-                return c.fetchall()
-            else:
-                return c.fetchall()
-        return None
-        
-    except Exception as e:
-        logger.error(f"Database error: {e}")
-        logger.error(f"Query: {query}")
-        logger.error(f"Params: {params}")
-        
-        # Для PostgreSQL делаем rollback при ошибке
-        if self.use_postgres:
-            try:
+                query = query.replace('?', '%s')
+                
+            c.execute(query, params)
+            
+            if commit:
+                self.conn.commit()
+            
+            if fetch:
+                if self.use_postgres:
+                    return c.fetchall()
+                else:
+                    return c.fetchall()
+            return None
+            
+        except Exception as e:
+            logger.error(f"Database error: {e}")
+            logger.error(f"Query: {query}")
+            logger.error(f"Params: {params}")
+            
+            # Для PostgreSQL делаем rollback при ошибке
+            if self.use_postgres:
+                try:
+                    self.conn.rollback()
+                    logger.info("Transaction rolled back")
+                except:
+                    pass
+            
+            if commit:
                 self.conn.rollback()
-                logger.info("Transaction rolled back")
-            except:
-                pass
-        
-        if commit:
-            self.conn.rollback()
-        raise
+            raise
     
     def init_tables(self):
         """Инициализация таблиц с поддержкой обоих движков"""
@@ -104,9 +104,9 @@ def execute(self, query: str, params: tuple = (),
                     id SERIAL PRIMARY KEY,
                     user_id BIGINT,
                     amount REAL,
-                    type TEXT CHECK(type IN ('deposit', 'purchase', 'withdraw', 'referral', 'admin_deposit')),
+                    type TEXT,
                     product_id INTEGER,
-                    status TEXT CHECK(status IN ('pending', 'completed', 'failed', 'cancelled', 'expired')),
+                    status TEXT,
                     invoice_id TEXT,
                     currency TEXT,
                     created_at TEXT,
@@ -152,13 +152,6 @@ def execute(self, query: str, params: tuple = (),
                     created_at TEXT
                 )""",
                 
-                # Настройки
-                """CREATE TABLE IF NOT EXISTS settings (
-                    key TEXT PRIMARY KEY,
-                    value TEXT,
-                    updated_at TEXT
-                )""",
-                
                 # История покупок
                 """CREATE TABLE IF NOT EXISTS purchase_history (
                     id SERIAL PRIMARY KEY,
@@ -200,16 +193,6 @@ def execute(self, query: str, params: tuple = (),
                     FOREIGN KEY (promo_id) REFERENCES promo_codes(id),
                     FOREIGN KEY (user_id) REFERENCES users(user_id)
                 )""",
-                
-                # Индексы
-                "CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id)",
-                "CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status)",
-                "CREATE INDEX IF NOT EXISTS idx_transactions_invoice ON transactions(invoice_id)",
-                "CREATE INDEX IF NOT EXISTS idx_users_referrer ON users(referrer_id)",
-                "CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)",
-                "CREATE INDEX IF NOT EXISTS idx_purchase_history_user ON purchase_history(user_id)",
-                "CREATE INDEX IF NOT EXISTS idx_promo_codes_code ON promo_codes(code)",
-                "CREATE INDEX IF NOT EXISTS idx_promo_entries_user ON promo_entries(user_id)",
             ]
         else:
             # SQLite синтаксис
@@ -234,9 +217,9 @@ def execute(self, query: str, params: tuple = (),
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER,
                     amount REAL,
-                    type TEXT CHECK(type IN ('deposit', 'purchase', 'withdraw', 'referral', 'admin_deposit')),
+                    type TEXT,
                     product_id INTEGER,
-                    status TEXT CHECK(status IN ('pending', 'completed', 'failed', 'cancelled', 'expired')),
+                    status TEXT,
                     invoice_id TEXT,
                     currency TEXT,
                     created_at TEXT,
@@ -282,13 +265,6 @@ def execute(self, query: str, params: tuple = (),
                     created_at TEXT
                 )""",
                 
-                # Настройки
-                """CREATE TABLE IF NOT EXISTS settings (
-                    key TEXT PRIMARY KEY,
-                    value TEXT,
-                    updated_at TEXT
-                )""",
-                
                 # История покупок
                 """CREATE TABLE IF NOT EXISTS purchase_history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -331,16 +307,6 @@ def execute(self, query: str, params: tuple = (),
                     FOREIGN KEY (promo_id) REFERENCES promo_codes(id),
                     FOREIGN KEY (user_id) REFERENCES users(user_id)
                 )""",
-                
-                # Индексы
-                "CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id)",
-                "CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status)",
-                "CREATE INDEX IF NOT EXISTS idx_transactions_invoice ON transactions(invoice_id)",
-                "CREATE INDEX IF NOT EXISTS idx_users_referrer ON users(referrer_id)",
-                "CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)",
-                "CREATE INDEX IF NOT EXISTS idx_purchase_history_user ON purchase_history(user_id)",
-                "CREATE INDEX IF NOT EXISTS idx_promo_codes_code ON promo_codes(code)",
-                "CREATE INDEX IF NOT EXISTS idx_promo_entries_user ON promo_entries(user_id)",
             ]
         
         for query in queries:
