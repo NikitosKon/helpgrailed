@@ -1,6 +1,6 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from config import CATEGORIES, ADMIN_IDS, LANGUAGES, TOP_CURRENCIES, CRYPTO_CURRENCIES
-from database import db  # Добавили импорт базы данных
+from config import ADMIN_IDS, LANGUAGES, TOP_CURRENCIES, CRYPTO_CURRENCIES
+from database import db
 
 def get_text(key, **kwargs):
     """Получить текст на русском"""
@@ -36,9 +36,12 @@ def cancel_button():
     return InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data='cancel_input')]])
 
 def categories_menu():
-    """Меню категорий"""
+    """Меню категорий из БД"""
+    # Получаем категории из базы данных
+    categories = db.get_categories()
+    
     keyboard = []
-    for cat_id, cat_name in CATEGORIES.items():
+    for cat_id, cat_name in categories.items():
         keyboard.append([InlineKeyboardButton(cat_name, callback_data=f'cat_{cat_id}')])
     keyboard.append([InlineKeyboardButton(get_text('back'), callback_data='menu')])
     return InlineKeyboardMarkup(keyboard)

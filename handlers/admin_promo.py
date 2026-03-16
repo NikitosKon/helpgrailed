@@ -1,7 +1,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from database import db
-from config import ADMIN_IDS, CATEGORIES
+from config import ADMIN_IDS
 import logging
 from datetime import datetime, timedelta
 
@@ -116,9 +116,10 @@ async def handle_promo_type_selection(update: Update, context: ContextTypes.DEFA
         context.user_data['bonus_type'] = 'discount'
         context.user_data['bonus_value'] = 100
         
-        # Сразу показываем категории
+        # Получаем категории из БД
+        categories = db.get_categories()
         keyboard = []
-        for cat_id, cat_name in CATEGORIES.items():
+        for cat_id, cat_name in categories.items():
             keyboard.append([InlineKeyboardButton(f"📂 {cat_name}", callback_data=f'promo_target_category_{cat_id}')])
         
         keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_create_promo')])
@@ -230,6 +231,23 @@ async def process_admin_create_promo(update: Update, context: ContextTypes.DEFAU
             )
             
             if success:
+                # Получаем название категории если нужно
+                target_info = ""
+                if context.user_data.get('target_type') == 'category':
+                    categories = db.get_categories()
+                    cat_name = categories.get(context.user_data['target_id'], context.user_data['target_id'])
+                    target_info = f"📂 Категория: {cat_name}\n"
+                elif context.user_data.get('target_type') == 'product':
+                    product = db.get_product(context.user_data['target_id'])
+                    if product:
+                        if isinstance(product, dict):
+                            product_name = product.get('name', f"ID {context.user_data['target_id']}")
+                        else:
+                            product_name = product[2]
+                        target_info = f"📦 Товар: {product_name}\n"
+                    else:
+                        target_info = f"📦 Товар: ID {context.user_data['target_id']}\n"
+                
                 result_text = (
                     f"✅ <b>Промокод успешно создан!</b>\n\n"
                     f"Код: <code>{context.user_data['promo_code']}</code>\n"
@@ -240,11 +258,7 @@ async def process_admin_create_promo(update: Update, context: ContextTypes.DEFAU
                 else:
                     result_text += f"💰 Бонус на баланс: ${context.user_data['bonus_value']}\n"
                 
-                if context.user_data.get('target_type') == 'product':
-                    result_text += f"📦 Товар: ID {context.user_data['target_id']}\n"
-                elif context.user_data.get('target_type') == 'category':
-                    result_text += f"📂 Категория: {context.user_data['target_id']}\n"
-                
+                result_text += target_info
                 result_text += f"👥 Могут ввести: {context.user_data['max_entries']}\n"
                 result_text += f"🔄 Использований: {context.user_data['max_uses']}\n"
                 result_text += f"⏰ Срок: {days if days > 0 else 'бессрочно'}"

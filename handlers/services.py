@@ -1,8 +1,8 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from database import db
+from database import db  # Добавь этот импорт
 from keyboards.reply import categories_menu, get_text, back_button
-from config import CATEGORIES, ADMIN_IDS, SUPPORT_CONTACT
+from config import SUPPORT_CONTACT, ADMIN_IDS  # CATEGORIES больше не нужен
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,7 +12,7 @@ async def handle_services(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.edit_message_text(
         get_text('choose_category'),
-        reply_markup=categories_menu()
+        reply_markup=categories_menu()  # categories_menu сам загрузит категории из БД
     )
 
 async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, category):
@@ -35,24 +35,28 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
         items = db.get_products(category)
         
         if not items:
+            # Получаем название категории из БД
+            categories = db.get_categories()
+            cat_name = categories.get(category, category)
             await query.edit_message_text(
-                f"😕 В категории {CATEGORIES.get(category, category)} пока нет товаров.",
+                f"😕 В категории {cat_name} пока нет товаров.",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(get_text('back'), callback_data='services')]])
             )
             return
         
-        text = f"{CATEGORIES.get(category, category)}\n\nВыберите товар:"
+        # Получаем название категории из БД
+        categories = db.get_categories()
+        cat_name = categories.get(category, category)
+        text = f"{cat_name}\n\nВыберите товар:"
         keyboard = []
         
         for item in items:
-            # Проверяем, что item это словарь
             if isinstance(item, dict):
                 pid = item.get('id')
                 name = item.get('name', 'Без названия')
                 price = item.get('price_usd', 0)
                 stock = item.get('stock', -1)
             else:
-                # Если вдруг кортеж
                 pid = item[0]
                 name = item[2]
                 price = item[3]
@@ -82,7 +86,6 @@ async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
         await query.edit_message_text("❌ Товар не найден.")
         return
     
-    # Проверяем тип prod (словарь или кортеж)
     if isinstance(prod, dict):
         name = prod.get('name', 'Без названия')
         cat = prod.get('category', '')
@@ -103,7 +106,7 @@ async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
         f"{desc}\n\n"
         f"💰 Цена: <b>${price:.2f}</b>\n"
         f"📦 В наличии: {stock_str}\n"
-        f"💳 Ваш баланс: <b>${db.get_balance(user.id)}</b>"
+        f"💳 Ваш баланс: <b>${db.get_balance(user.id):.2f}</b>"
     )
     
     keyboard = [
@@ -128,7 +131,6 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
         await query.answer("❌ Товар не найден", show_alert=True)
         return
     
-    # Получаем данные товара
     if isinstance(prod, dict):
         product_name = prod.get('name', 'Товар')
         product_price = prod.get('price_usd', 0)
@@ -138,7 +140,6 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
         product_price = prod[3]
         product_category = prod[1]
     
-    # Используем атомарную транзакцию
     success, message, product_data = db.purchase(user.id, product_id)
     
     if not success:
@@ -168,7 +169,6 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
             parse_mode='HTML'
         )
     else:
-        # Уведомление админам
         for admin_id in ADMIN_IDS:
             try:
                 await context.bot.send_message(
