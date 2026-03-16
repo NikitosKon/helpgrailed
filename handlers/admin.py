@@ -192,30 +192,67 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
 
 async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-
-    users_total = db.execute("SELECT COUNT(*) FROM users", fetch=True)[0][0]
-    users_today = db.execute(
-        "SELECT COUNT(*) FROM users WHERE DATE(registered_date) = DATE(?)",
+    
+    # Получаем результаты
+    users_result = db.execute("SELECT COUNT(*) as count FROM users", fetch=True)
+    if users_result:
+        if db.use_postgres:
+            users_total = users_result[0]['count']
+        else:
+            users_total = users_result[0][0]
+    else:
+        users_total = 0
+    
+    users_today_result = db.execute(
+        "SELECT COUNT(*) as count FROM users WHERE DATE(registered_date) = DATE(?)",
         (datetime.now().date().isoformat(),),
         fetch=True
-    )[0][0]
-
-    purchases_total = db.execute(
-        "SELECT COUNT(*) FROM transactions WHERE type = 'purchase' AND status = 'completed'",
+    )
+    if users_today_result:
+        if db.use_postgres:
+            users_today = users_today_result[0]['count']
+        else:
+            users_today = users_today_result[0][0]
+    else:
+        users_today = 0
+    
+    purchases_result = db.execute(
+        "SELECT COUNT(*) as count FROM transactions WHERE type = 'purchase' AND status = 'completed'",
         fetch=True
-    )[0][0]
-
-    revenue = db.execute(
-        "SELECT SUM(amount) FROM transactions WHERE type = 'purchase' AND status = 'completed'",
+    )
+    if purchases_result:
+        if db.use_postgres:
+            purchases_total = purchases_result[0]['count']
+        else:
+            purchases_total = purchases_result[0][0]
+    else:
+        purchases_total = 0
+    
+    revenue_result = db.execute(
+        "SELECT SUM(amount) as total FROM transactions WHERE type = 'purchase' AND status = 'completed'",
         fetch=True
-    )[0][0] or 0
-
-    revenue_today = db.execute(
-        "SELECT SUM(amount) FROM transactions WHERE type = 'purchase' AND status = 'completed' AND DATE(completed_at) = DATE(?)",
+    )
+    if revenue_result and revenue_result[0]:
+        if db.use_postgres:
+            revenue = revenue_result[0]['total'] or 0
+        else:
+            revenue = revenue_result[0][0] or 0
+    else:
+        revenue = 0
+    
+    revenue_today_result = db.execute(
+        "SELECT SUM(amount) as total FROM transactions WHERE type = 'purchase' AND status = 'completed' AND DATE(completed_at) = DATE(?)",
         (datetime.now().date().isoformat(),),
         fetch=True
-    )[0][0] or 0
-
+    )
+    if revenue_today_result and revenue_today_result[0]:
+        if db.use_postgres:
+            revenue_today = revenue_today_result[0]['total'] or 0
+        else:
+            revenue_today = revenue_today_result[0][0] or 0
+    else:
+        revenue_today = 0
+    
     text = (
         f"📊 <b>Статистика</b>\n\n"
         f"👥 Всего пользователей: {users_total}\n"
@@ -224,7 +261,7 @@ async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💰 Общий доход: ${revenue:.2f}\n"
         f"📈 Доход сегодня: ${revenue_today:.2f}"
     )
-
+    
     keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin')]]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
@@ -573,32 +610,42 @@ async def admin_debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def admin_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-
-    stats = db.execute("SELECT COUNT(*), SUM(balance) FROM users", fetch=True)[0]
-    total_users = stats[0]
-    total_balance = stats[1] or 0
-
+    
+    stats = db.execute("SELECT COUNT(*) as count, SUM(balance) as total FROM users", fetch=True)[0]
+    
+    if db.use_postgres:
+        total_users = stats['count'] if stats else 0
+        total_balance = stats['total'] or 0
+    else:
+        total_users = stats[0] if stats else 0
+        total_balance = stats[1] or 0
+    
     text = (
         f"👥 <b>Пользователи</b>\n\n"
         f"Всего: {total_users}\n"
         f"Общий баланс: ${total_balance:.2f}\n\n"
         f"Функции в разработке..."
     )
-
+    
     keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin')]]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 
 async def admin_sales(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-
+    
     sales = db.execute(
-        "SELECT COUNT(*), SUM(amount) FROM transactions WHERE type = 'purchase' AND status = 'completed'",
+        "SELECT COUNT(*) as count, SUM(amount) as total FROM transactions WHERE type = 'purchase' AND status = 'completed'",
         fetch=True
     )[0]
-    total_sales = sales[0]
-    total_revenue = sales[1] or 0
-
+    
+    if db.use_postgres:
+        total_sales = sales['count'] if sales else 0
+        total_revenue = sales['total'] or 0
+    else:
+        total_sales = sales[0] if sales else 0
+        total_revenue = sales[1] or 0
+    
     by_category = db.execute(
         "SELECT p.category, COUNT(*), SUM(t.amount) FROM transactions t "
         "JOIN products p ON t.product_id = p.id "
@@ -606,14 +653,22 @@ async def admin_sales(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "GROUP BY p.category",
         fetch=True
     )
-
+    
     text = f"📈 <b>Продажи</b>\n\nВсего продаж: {total_sales}\nОбщая выручка: ${total_revenue:.2f}\n\n"
     if by_category:
         text += "По категориям:\n"
-        for cat, count, amount in by_category:
+        for row in by_category:
+            if db.use_postgres:
+                cat = row['category']
+                count = row['count']
+                amount = row['sum'] or 0
+            else:
+                cat = row[0]
+                count = row[1]
+                amount = row[2] or 0
             cat_name = CATEGORIES.get(cat, cat)
             text += f" • {cat_name}: {count} шт. (${amount:.2f})\n"
-
+    
     keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin')]]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 

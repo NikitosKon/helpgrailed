@@ -9,23 +9,47 @@ async def handle_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
     
-    purchases = db.execute(
-        "SELECT COUNT(*) FROM transactions WHERE user_id = ? AND type = 'purchase' AND status = 'completed'", 
+    # Получаем количество покупок
+    purchases_result = db.execute(
+        "SELECT COUNT(*) as count FROM transactions WHERE user_id = ? AND type = 'purchase' AND status = 'completed'", 
         (user.id,), 
         fetch=True
-    )[0][0] or 0
+    )
+    if purchases_result:
+        if db.use_postgres:
+            purchases = purchases_result[0]['count'] or 0
+        else:
+            purchases = purchases_result[0][0] or 0
+    else:
+        purchases = 0
     
-    total_spent = db.execute(
-        "SELECT SUM(amount) FROM transactions WHERE user_id = ? AND type = 'purchase' AND status = 'completed'", 
+    # Получаем сумму потраченного
+    spent_result = db.execute(
+        "SELECT SUM(amount) as total FROM transactions WHERE user_id = ? AND type = 'purchase' AND status = 'completed'", 
         (user.id,), 
         fetch=True
-    )[0][0] or 0
+    )
+    if spent_result and spent_result[0]:
+        if db.use_postgres:
+            total_spent = spent_result[0]['total'] or 0
+        else:
+            total_spent = spent_result[0][0] or 0
+    else:
+        total_spent = 0
     
-    referrals = db.execute(
-        "SELECT COUNT(*) FROM referrals WHERE referrer_id = ?", 
+    # Получаем количество рефералов
+    referrals_result = db.execute(
+        "SELECT COUNT(*) as count FROM referrals WHERE referrer_id = ?", 
         (user.id,), 
         fetch=True
-    )[0][0] or 0
+    )
+    if referrals_result:
+        if db.use_postgres:
+            referrals = referrals_result[0]['count'] or 0
+        else:
+            referrals = referrals_result[0][0] or 0
+    else:
+        referrals = 0
     
     text = (
         f"👤 <b>Профиль</b>\n\n"
@@ -37,7 +61,6 @@ async def handle_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👥 Рефералов: {referrals}"
     )
     
-    # КНОПКА ИСТОРИИ ПОКУПОК - должна быть здесь!
     keyboard = [
         [InlineKeyboardButton("📜 История покупок", callback_data='purchase_history')],
         [InlineKeyboardButton(get_text('back'), callback_data='menu')]
@@ -84,17 +107,33 @@ async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_username = (await context.bot.get_me()).username
     ref_link = f"https://t.me/{bot_username}?start=ref{user.id}"
     
-    referrals_count = db.execute(
-        "SELECT COUNT(*) FROM referrals WHERE referrer_id = ?", 
+    # Получаем количество рефералов
+    referrals_result = db.execute(
+        "SELECT COUNT(*) as count FROM referrals WHERE referrer_id = ?", 
         (user.id,), 
         fetch=True
-    )[0][0] or 0
+    )
+    if referrals_result:
+        if db.use_postgres:
+            referrals_count = referrals_result[0]['count'] or 0
+        else:
+            referrals_count = referrals_result[0][0] or 0
+    else:
+        referrals_count = 0
     
-    earned = db.execute(
-        "SELECT SUM(bonus) FROM referrals WHERE referrer_id = ?", 
+    # Получаем сумму заработка
+    earned_result = db.execute(
+        "SELECT SUM(bonus) as total FROM referrals WHERE referrer_id = ?", 
         (user.id,), 
         fetch=True
-    )[0][0] or 0
+    )
+    if earned_result and earned_result[0]:
+        if db.use_postgres:
+            earned = earned_result[0]['total'] or 0
+        else:
+            earned = earned_result[0][0] or 0
+    else:
+        earned = 0
     
     text = (
         f"🔗 <b>Реферальная программа</b>\n\n"
