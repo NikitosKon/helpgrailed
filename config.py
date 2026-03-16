@@ -59,15 +59,8 @@ class Config:
             }
         }
         
-        # Категории товаров
-        self.CATEGORIES = {
-            'grailed_accounts': "📱 Grailed account's",
-            'paypal': "💳 PayPal",
-            'call_service': "📞 Прозвон сервис",
-            'grailed_likes': "❤️ Накрутка лайков на Grailed",
-            'ebay': "🏷 eBay",
-            'support': "🆘 Тех поддержка",
-        }
+        # Категории товаров - будут загружаться из БД при обращении
+        self._categories = self._load_categories()
         
         # Список поддерживаемых валют в CryptoPay
         self.CRYPTO_CURRENCIES = {
@@ -86,6 +79,39 @@ class Config:
         self.TOP_CURRENCIES = ['USDT', 'TON', 'BTC', 'ETH', 'BNB', 'TRX', 'USDC', 'BUSD', 'EUR']
         
         self.validate()
+    
+    def _load_categories(self):
+        """Загрузить категории из БД или использовать дефолтные"""
+        try:
+            # Пробуем загрузить из БД
+            from database import db
+            categories = db.get_categories()
+            if categories:
+                return categories
+        except:
+            pass
+        
+        # Если БД пустая или ошибка, возвращаем дефолтные
+        return {
+            'grailed_accounts': "📱 Grailed account's",
+            'paypal': "💳 PayPal",
+            'call_service': "📞 Прозвон сервис",
+            'grailed_likes': "❤️ Накрутка лайков на Grailed",
+            'ebay': "🏷 eBay",
+            'support': "🆘 Тех поддержка",
+        }
+    
+    @property
+    def CATEGORIES(self):
+        """Геттер для категорий - всегда свежие из БД"""
+        try:
+            from database import db
+            categories = db.get_categories()
+            if categories:
+                return categories
+        except:
+            pass
+        return self._categories
     
     def validate(self):
         """Валидация конфигурации"""
@@ -114,10 +140,10 @@ ADMIN_IDS = config.ADMIN_IDS
 ADMIN_CONTACT = config.ADMIN_CONTACT
 SUPPORT_CONTACT = config.SUPPORT_CONTACT
 DB_FILE = config.DB_FILE
-DATABASE_URL = config.DATABASE_URL  # Добавлено для PostgreSQL
+DATABASE_URL = config.DATABASE_URL
 REFERRAL_BONUS = config.REFERRAL_BONUS
 LANGUAGES = config.LANGUAGES
-CATEGORIES = config.CATEGORIES
+CATEGORIES = config.CATEGORIES  # Это теперь свойство, а не переменная
 CRYPTO_CURRENCIES = config.CRYPTO_CURRENCIES
 TOP_CURRENCIES = config.TOP_CURRENCIES
 CHANNEL_URL = config.CHANNEL_URL

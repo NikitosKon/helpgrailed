@@ -17,16 +17,26 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = query.from_user
     balance = db.get_balance(user.id)
     
-    text = f"{get_text('balance', balance=balance)}\n\nПополнить или вывести средства?"
+    text = (
+        f"💰 <b>Баланс</b>\n\n"
+        f"Текущий баланс: <b>${balance:.2f}</b>\n\n"
+        f"Выберите действие:"
+    )
+    
     keyboard = [
         [
-            InlineKeyboardButton(get_text('deposit'), callback_data='deposit'),
-            InlineKeyboardButton(get_text('withdraw'), callback_data='withdraw')
+            InlineKeyboardButton("📥 Пополнить", callback_data='deposit'),
+            InlineKeyboardButton("📤 Вывести", callback_data='withdraw')
         ],
         [InlineKeyboardButton("🎫 Промокод", callback_data='promo_code')],
-        [InlineKeyboardButton(get_text('back'), callback_data='menu')]
+        [InlineKeyboardButton("◀️ Назад", callback_data='menu')]
     ]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )
 
 async def handle_deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Меню пополнения - выбор валюты"""

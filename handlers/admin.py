@@ -83,12 +83,10 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
         from handlers.admin_promo import admin_promo_menu
         await admin_promo_menu(update, context)
 
-    # Добавь ЭТИ новые обработчики
     elif data == 'admin_create_promo':
         from handlers.admin_promo import admin_create_promo_start
         await admin_create_promo_start(update, context)
 
-    # Добавить эти два обработчика
     elif data == 'promo_generate':
         from handlers.admin_promo import handle_promo_creation_method
         await handle_promo_creation_method(update, context, data)
@@ -107,8 +105,6 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
 
     elif data == 'bonus_discount' or data == 'bonus_balance':
         logger.info(f"📢 Выбор типа бонуса: {data}")
-        # Этот callback уже обрабатывается в text_handler через pending action
-        # Просто пропускаем, чтобы не было ошибки
         await query.answer()
 
     # Управление товарами
@@ -181,7 +177,6 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
         await broadcast_send(update, context)
 
     elif data == 'broadcast_edit':
-        # Возвращаем к редактированию
         from handlers.admin_broadcast import broadcast_create_start
         await broadcast_create_start(update, context)
 
@@ -193,7 +188,6 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
 async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     
-    # Получаем результаты
     users_result = db.execute("SELECT COUNT(*) as count FROM users", fetch=True)
     if users_result:
         if db.use_postgres:
@@ -277,7 +271,7 @@ async def admin_products_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton("📋 Список товаров", callback_data='admin_list_products')],
         [InlineKeyboardButton("💰 Управление балансами", callback_data='admin_balance_menu')],
         [InlineKeyboardButton("🎫 Промокоды", callback_data='admin_promo_menu')],
-        [InlineKeyboardButton("📢 Рассылка", callback_data='admin_broadcast_menu')],  # Новая кнопка
+        [InlineKeyboardButton("📢 Рассылка", callback_data='admin_broadcast_menu')],
         [InlineKeyboardButton("🐛 Отладка", callback_data='admin_debug')],
         [InlineKeyboardButton("◀️ Назад", callback_data='admin')]
     ]
@@ -288,7 +282,6 @@ async def admin_products_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
         parse_mode='HTML'
     )
 
-# ... остальные функции без изменений ...
 
 async def admin_list_products(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -300,7 +293,21 @@ async def admin_list_products(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     text = "📋 <b>Список товаров:</b>\n\n"
     for prod in products:
-        pid, cat, name, price, _, stock, is_active, sort, _ = prod
+        if isinstance(prod, dict):
+            pid = prod.get('id')
+            cat = prod.get('category')
+            name = prod.get('name')
+            price = prod.get('price_usd')
+            stock = prod.get('stock', -1)
+            is_active = prod.get('is_active', 1)
+        else:
+            pid = prod[0]
+            cat = prod[1]
+            name = prod[2]
+            price = prod[3]
+            stock = prod[5]
+            is_active = prod[7]
+        
         status = "✅" if is_active else "❌"
         stock_str = '∞' if stock < 0 else str(stock)
         text += f"{status} ID {pid}: {name}\n   Кат: {cat}, ${price:.2f}, {stock_str} шт.\n"
@@ -316,7 +323,6 @@ async def admin_add_product_start(update: Update, context: ContextTypes.DEFAULT_
     query = update.callback_query
     user = query.from_user
 
-    # Очищаем старые данные
     for k in list(context.user_data.keys()):
         if k.startswith('add_prod_'):
             del context.user_data[k]
@@ -385,16 +391,19 @@ async def handle_admin_add_product_input(update: Update, context: ContextTypes.D
     if action == 'admin_add_product_name':
         context.user_data['add_prod_name'] = text
         db.set_pending_action(user.id, 'admin_add_product_category')
+        
+        categories = db.get_categories()
         await update.message.reply_text(
             f"✅ Название: {text}\n\n"
             f"Введите категорию товара:\n"
-            f"Доступные: {', '.join(CATEGORIES.keys())}"
+            f"Доступные: {', '.join(categories.keys())}"
         )
         return
 
     elif action == 'admin_add_product_category':
-        if text not in CATEGORIES:
-            await update.message.reply_text(f"❌ Неверная категория. Доступны: {', '.join(CATEGORIES.keys())}")
+        categories = db.get_categories()
+        if text not in categories:
+            await update.message.reply_text(f"❌ Неверная категория. Доступны: {', '.join(categories.keys())}")
             return
         context.user_data['add_prod_category'] = text
         db.set_pending_action(user.id, 'admin_add_product_price')
@@ -453,24 +462,12 @@ async def handle_admin_add_product_input(update: Update, context: ContextTypes.D
                 price=float(context.user_data['add_prod_price']),
                 description=context.user_data.get('add_prod_desc'),
                 stock=int(context.user_data['add_prod_stock']),
-                sort_order=sort_order
+                sort_order=sort_order,
+                photo_url=context.user_data.get('add_prod_photo_url')
             )
 
             db.clear_pending_action(user.id)
             context.user_data.clear()
-
-            # Отладка: показываем, что реально сохранилось
-            debug_text = (
-                f"DEBUG INFO:\n"
-                f"Название: {context.user_data.get('add_prod_name')}\n"
-                f"Категория: {context.user_data.get('add_prod_category')}\n"
-                f"Цена: {context.user_data.get('add_prod_price')}\n"
-                f"Описание: {context.user_data.get('add_prod_desc') or 'нет'}\n"
-                f"Запас: {context.user_data.get('add_prod_stock')}\n"
-                f"Сортировка: {sort_order}\n"
-                f"Фото путь: {context.user_data.get('add_prod_photo_url') or 'не добавлено'}"
-            )
-            await update.message.reply_text(debug_text)
 
             await update.message.reply_text(
                 "🎉 Товар успешно добавлен!",
@@ -498,13 +495,11 @@ async def admin_edit_product_list(update: Update, context: ContextTypes.DEFAULT_
         return
 
     keyboard = []
-    for prod in products[:10]:  # Берем первые 10 товаров
-        # Проверяем, словарь это или кортеж
+    for prod in products[:10]:
         if isinstance(prod, dict):
             pid = prod.get('id')
             name = prod.get('name', 'Без названия')
         else:
-            # Если вдруг кортеж
             pid = prod[0]
             name = prod[2]
         
@@ -528,14 +523,12 @@ async def admin_edit_product_start(update: Update, context: ContextTypes.DEFAULT
 
     db.set_pending_action(query.from_user.id, f'admin_edit_{product_id}_name')
 
-    # Проверяем, словарь это или кортеж
     if isinstance(prod, dict):
         current_name = prod.get('name', 'Без названия')
         current_price = prod.get('price_usd', 0)
         current_desc = prod.get('description', 'нет')
         current_stock = prod.get('stock', -1)
     else:
-        # Если вдруг кортеж
         current_name = prod[2]
         current_price = prod[3]
         current_desc = prod[4] or 'нет'
@@ -582,6 +575,7 @@ async def admin_delete_product_list(update: Update, context: ContextTypes.DEFAUL
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+
 async def admin_delete_product_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int):
     query = update.callback_query
 
@@ -599,7 +593,10 @@ async def admin_debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
     products = db.execute("SELECT * FROM products", fetch=True)
     text = "📦 <b>Товары в БД:</b>\n\n"
     for p in products:
-        text += f"ID: {p[0]}, Кат: {p[1]}, {p[2]}, Цена: ${p[3]}, Активен: {p[7]}\n"
+        if db.use_postgres:
+            text += f"ID: {p['id']}, Кат: {p['category']}, {p['name']}, Цена: ${p['price_usd']}, Активен: {p['is_active']}\n"
+        else:
+            text += f"ID: {p[0]}, Кат: {p[1]}, {p[2]}, Цена: ${p[3]}, Активен: {p[7]}\n"
 
     if len(text) > 4000:
         text = text[:4000] + "..."
@@ -666,7 +663,8 @@ async def admin_sales(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 cat = row[0]
                 count = row[1]
                 amount = row[2] or 0
-            cat_name = CATEGORIES.get(cat, cat)
+            categories = db.get_categories()
+            cat_name = categories.get(cat, cat)
             text += f" • {cat_name}: {count} шт. (${amount:.2f})\n"
     
     keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin')]]
@@ -778,6 +776,7 @@ async def admin_remove_confirm(update: Update, context: ContextTypes.DEFAULT_TYP
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_admins')]])
     )
 
+
 # ===== УПРАВЛЕНИЕ КАТЕГОРИЯМИ =====
 
 async def admin_categories_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -800,11 +799,13 @@ async def admin_categories_menu(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def admin_list_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать список категорий"""
+    """Показать список категорий из БД"""
     query = update.callback_query
     
+    categories = db.get_categories()
+    
     text = "📋 <b>Список категорий:</b>\n\n"
-    for cat_id, cat_name in CATEGORIES.items():
+    for cat_id, cat_name in categories.items():
         text += f"• <b>{cat_id}</b> - {cat_name}\n"
     
     keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')]]
@@ -837,7 +838,6 @@ async def handle_admin_add_category_input(update: Update, context: ContextTypes.
     text = text.strip()
     
     if action == 'admin_add_category_id':
-        # Проверяем, что ID валидный (только буквы, цифры и подчеркивания)
         import re
         if not re.match(r'^[a-z0-9_]+$', text):
             await update.message.reply_text(
@@ -846,8 +846,8 @@ async def handle_admin_add_category_input(update: Update, context: ContextTypes.
             )
             return
         
-        # Проверяем, что такой категории ещё нет
-        if text in CATEGORIES:
+        existing = db.get_categories()
+        if text in existing:
             await update.message.reply_text(
                 f"❌ Категория с ID <b>{text}</b> уже существует!\n"
                 "Введите другой ID:",
@@ -872,26 +872,23 @@ async def handle_admin_add_category_input(update: Update, context: ContextTypes.
             db.clear_pending_action(user.id)
             return
         
-        # Добавляем новую категорию в глобальную переменную
-        # ВАЖНО: Это временное решение, нужно сохранять в БД
-        CATEGORIES[cat_id] = text
-        
-        # Здесь можно добавить сохранение в отдельную таблицу categories
+        if db.add_category(cat_id, text):
+            await update.message.reply_text(
+                f"✅ Категория успешно добавлена!\n\n"
+                f"ID: <b>{cat_id}</b>\n"
+                f"Название: <b>{text}</b>",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📋 К списку категорий", callback_data='admin_list_categories')],
+                    [InlineKeyboardButton("➕ Добавить ещё", callback_data='admin_add_category')],
+                    [InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')]
+                ]),
+                parse_mode='HTML'
+            )
+        else:
+            await update.message.reply_text("❌ Ошибка при добавлении категории")
         
         db.clear_pending_action(user.id)
         context.user_data.clear()
-        
-        await update.message.reply_text(
-            f"✅ Категория успешно добавлена!\n\n"
-            f"ID: <b>{cat_id}</b>\n"
-            f"Название: <b>{text}</b>",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📋 К списку категорий", callback_data='admin_list_categories')],
-                [InlineKeyboardButton("➕ Добавить ещё", callback_data='admin_add_category')],
-                [InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')]
-            ]),
-            parse_mode='HTML'
-        )
         return
 
 
@@ -899,8 +896,9 @@ async def admin_edit_category_list(update: Update, context: ContextTypes.DEFAULT
     """Список категорий для редактирования"""
     query = update.callback_query
     
+    categories = db.get_categories()
     keyboard = []
-    for cat_id, cat_name in CATEGORIES.items():
+    for cat_id, cat_name in categories.items():
         keyboard.append([InlineKeyboardButton(f"✏️ {cat_name}", callback_data=f'admin_edit_cat_{cat_id}')])
     
     keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')])
@@ -916,7 +914,8 @@ async def admin_edit_category_start(update: Update, context: ContextTypes.DEFAUL
     query = update.callback_query
     user = query.from_user
     
-    if cat_id not in CATEGORIES:
+    categories = db.get_categories()
+    if cat_id not in categories:
         await query.edit_message_text("❌ Категория не найдена")
         return
     
@@ -925,7 +924,7 @@ async def admin_edit_category_start(update: Update, context: ContextTypes.DEFAUL
     
     await query.edit_message_text(
         f"✏️ <b>Редактирование категории</b>\n\n"
-        f"Текущее название: {CATEGORIES[cat_id]}\n\n"
+        f"Текущее название: {categories[cat_id]}\n\n"
         f"Введите новое название категории:",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data='admin_categories_menu')]]),
         parse_mode='HTML'
@@ -939,27 +938,22 @@ async def handle_admin_edit_category_input(update: Update, context: ContextTypes
     if action.startswith('admin_edit_category_name_'):
         cat_id = action.replace('admin_edit_category_name_', '')
         
-        if cat_id not in CATEGORIES:
-            await update.message.reply_text("❌ Категория не найдена")
-            db.clear_pending_action(user.id)
-            return
-        
-        # Обновляем название
-        CATEGORIES[cat_id] = text.strip()
+        if db.update_category(cat_id, text.strip()):
+            await update.message.reply_text(
+                f"✅ Категория успешно обновлена!\n\n"
+                f"ID: <b>{cat_id}</b>\n"
+                f"Новое название: <b>{text}</b>",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📋 К списку категорий", callback_data='admin_list_categories')],
+                    [InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')]
+                ]),
+                parse_mode='HTML'
+            )
+        else:
+            await update.message.reply_text("❌ Ошибка при обновлении категории")
         
         db.clear_pending_action(user.id)
         context.user_data.clear()
-        
-        await update.message.reply_text(
-            f"✅ Категория успешно обновлена!\n\n"
-            f"ID: <b>{cat_id}</b>\n"
-            f"Новое название: <b>{text}</b>",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📋 К списку категорий", callback_data='admin_list_categories')],
-                [InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')]
-            ]),
-            parse_mode='HTML'
-        )
         return
 
 
@@ -967,8 +961,9 @@ async def admin_delete_category_list(update: Update, context: ContextTypes.DEFAU
     """Список категорий для удаления"""
     query = update.callback_query
     
+    categories = db.get_categories()
     keyboard = []
-    for cat_id, cat_name in CATEGORIES.items():
+    for cat_id, cat_name in categories.items():
         keyboard.append([InlineKeyboardButton(f"❌ {cat_name}", callback_data=f'admin_delete_cat_{cat_id}')])
     
     keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')])
@@ -983,26 +978,21 @@ async def admin_delete_category_confirm(update: Update, context: ContextTypes.DE
     """Подтверждение удаления категории"""
     query = update.callback_query
     
-    if cat_id not in CATEGORIES:
+    categories = db.get_categories()
+    if cat_id not in categories:
         await query.edit_message_text("❌ Категория не найдена")
         return
     
-    # Проверяем, есть ли товары в этой категории
-    products = db.get_products(cat_id)
-    if products:
+    success, message = db.delete_category(cat_id)
+    if success:
         await query.edit_message_text(
-            f"❌ Нельзя удалить категорию <b>{CATEGORIES[cat_id]}</b>, так как в ней есть товары!\n"
-            f"Сначала переместите или удалите все товары из этой категории.",
+            f"✅ Категория <b>{cat_id}</b> успешно удалена!",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')]]),
             parse_mode='HTML'
         )
-        return
-    
-    # Удаляем категорию
-    del CATEGORIES[cat_id]
-    
-    await query.edit_message_text(
-        f"✅ Категория <b>{cat_id}</b> успешно удалена!",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')]]),
-        parse_mode='HTML'
-    )
+    else:
+        await query.edit_message_text(
+            f"❌ {message}",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')]]),
+            parse_mode='HTML'
+        )

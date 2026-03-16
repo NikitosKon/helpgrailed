@@ -565,7 +565,7 @@ class Database:
             return False
     
     # === КАТЕГОРИИ ===
-    def get_categories(self):
+    def get_categories(self) -> Dict[str, str]:
         """Получить все категории из БД"""
         try:
             result = self.execute(
@@ -580,22 +580,18 @@ class Database:
                         categories[row['cat_id']] = row['name']
                     else:
                         categories[row[0]] = row[1]
-            
-            # Если в БД нет категорий, загружаем из config
-            if not categories:
-                from config import CATEGORIES as DEFAULT_CATEGORIES
-                for cat_id, name in DEFAULT_CATEGORIES.items():
-                    self.add_category(cat_id, name)
-                    categories[cat_id] = name
-            
-            return categories
+                return categories
         except Exception as e:
             logger.error(f"Error getting categories: {e}")
-            # Если таблицы нет или ошибка, возвращаем из config
+        
+        # Если таблицы нет или ошибка, пробуем загрузить из config
+        try:
             from config import CATEGORIES as DEFAULT_CATEGORIES
             return DEFAULT_CATEGORIES.copy()
-
-    def add_category(self, cat_id, name, sort_order=0):
+        except:
+            return {}
+    
+    def add_category(self, cat_id: str, name: str, sort_order: int = 0) -> bool:
         """Добавить категорию"""
         now = datetime.now().isoformat()
         try:
@@ -610,8 +606,8 @@ class Database:
         except Exception as e:
             logger.error(f"Failed to add category: {e}")
             return False
-
-    def update_category(self, cat_id, name):
+    
+    def update_category(self, cat_id: str, name: str) -> bool:
         """Обновить название категории"""
         now = datetime.now().isoformat()
         try:
@@ -625,8 +621,8 @@ class Database:
         except Exception as e:
             logger.error(f"Failed to update category: {e}")
             return False
-
-    def delete_category(self, cat_id):
+    
+    def delete_category(self, cat_id: str) -> Tuple[bool, str]:
         """Удалить категорию"""
         try:
             # Проверяем, есть ли товары в этой категории
