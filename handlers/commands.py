@@ -238,3 +238,37 @@ async def check_categories_command(update: Update, context: ContextTypes.DEFAULT
         text += "❌ Пусто!\n"
     
     await update.message.reply_text(text, parse_mode='HTML')
+
+async def fix_categories_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Фикс категорий (только для админов)"""
+    user = update.effective_user
+    
+    if user.id not in ADMIN_IDS:
+        return
+    
+    default_categories = {
+        'grailed_accounts': "📱 Grailed account's",
+        'paypal': "💳 PayPal",
+        'call_service': "📞 Прозвон сервис",
+        'grailed_likes': "❤️ Накрутка лайков на Grailed",
+        'ebay': "🏷 eBay",
+        'support': "🆘 Тех поддержка",
+    }
+    
+    text = "🔄 <b>Добавляю категории:</b>\n\n"
+    
+    for cat_id, cat_name in default_categories.items():
+        try:
+            # Проверяем, есть ли уже
+            existing = db.get_categories()
+            if cat_id in existing:
+                text += f"🔄 {cat_name} - уже есть\n"
+                # Обновляем на всякий случай
+                db.update_category(cat_id, cat_name)
+            else:
+                db.add_category(cat_id, cat_name)
+                text += f"✅ {cat_name} - добавлено\n"
+        except Exception as e:
+            text += f"❌ {cat_name} - ошибка: {e}\n"
+    
+    await update.message.reply_text(text, parse_mode='HTML')

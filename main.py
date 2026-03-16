@@ -5,7 +5,11 @@ import re
 import os
 from datetime import datetime, timedelta
 from aiohttp import web  # Добавленный импорт
-
+from handlers.commands import (
+    menu_command, profile_command, balance_command,
+    services_command, referral_command, help_command, admin_command,
+    fix_categories_command  # <--- добавь эту строку
+)
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler, 
@@ -305,7 +309,8 @@ def main():
     application.add_handler(CommandHandler("referral", referral_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("admin", admin_command))
-    
+    application.add_handler(CommandHandler("fixcats", fix_categories_command))
+
     # Регистрируем остальные обработчики
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
