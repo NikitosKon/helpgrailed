@@ -2,7 +2,9 @@ import sys
 import logging
 import asyncio
 import re
+import os
 from datetime import datetime, timedelta
+from aiohttp import web  # Добавленный импорт
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -33,6 +35,26 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+
+# === НОВЫЙ КОД: Healthcheck сервер для Render ===
+async def healthcheck(request):
+    """Простой healthcheck для Render"""
+    return web.Response(text="Bot is running")
+
+async def run_healthcheck():
+    """Запуск healthcheck сервера"""
+    app = web.Application()
+    app.router.add_get('/', healthcheck)
+    app.router.add_get('/health', healthcheck)
+    
+    port = int(os.environ.get('PORT', 10000))
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    logger.info(f"✅ Healthcheck server started on port {port}")
+# ============================================
 
 
 async def set_commands(application: Application):
@@ -256,10 +278,17 @@ async def post_init(application: Application):
     logger.info("Bot initialized successfully")
 
 
+# === ИЗМЕНЁННАЯ ФУНКЦИЯ main() ===
 def main():
     """Запуск бота"""
-    logger.info("Starting bot in polling mode...")
+    logger.info("Starting bot with healthcheck server...")
     
+    # Запускаем healthcheck сервер в отдельном цикле событий
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.create_task(run_healthcheck())
+    
+    # Создаём приложение бота
     application = (
         Application.builder()
         .token(BOT_TOKEN)
@@ -288,6 +317,7 @@ def main():
         payment_notification_handler
     ))
 
+    # Запускаем бота
     application.run_polling(
         allowed_updates=['message', 'callback_query'],
         drop_pending_updates=True
