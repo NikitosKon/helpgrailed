@@ -1,0 +1,4 @@
+echo "3.12.9" > .python-version
+git add .python-version
+git commit -m "Pin Python version to 3.12.9"
+git push origin master
