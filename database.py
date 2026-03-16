@@ -38,154 +38,36 @@ class Database:
         
         self.init_tables()
         self.seed_products()
-
-def init_tables(self):
-    """Инициализация таблиц"""
-    queries = [
-        # Пользователи
-        """CREATE TABLE IF NOT EXISTS users (
-            user_id BIGINT PRIMARY KEY,
-            username TEXT,
-            first_name TEXT,
-            referrer_id BIGINT,
-            balance REAL DEFAULT 0,
-            language TEXT DEFAULT 'ru',
-            registered_date TEXT,
-            last_active TEXT,
-            is_blocked INTEGER DEFAULT 0,
-            notify_enabled INTEGER DEFAULT 1,
-            admin_note TEXT
-        )""",
-        
-        # Транзакции
-        """CREATE TABLE IF NOT EXISTS transactions (
-            id SERIAL PRIMARY KEY,
-            user_id BIGINT,
-            amount REAL,
-            type TEXT,
-            product_id INTEGER,
-            status TEXT,
-            invoice_id TEXT,
-            currency TEXT,
-            created_at TEXT,
-            completed_at TEXT,
-            metadata TEXT,
-            promo_code TEXT,
-            discount_amount REAL DEFAULT 0
-        )""",
-        
-        # Рефералы
-        """CREATE TABLE IF NOT EXISTS referrals (
-            id SERIAL PRIMARY KEY,
-            referrer_id BIGINT,
-            referral_id BIGINT,
-            bonus REAL DEFAULT 0,
-            created_at TEXT,
-            purchase_count INTEGER DEFAULT 0,
-            total_earned REAL DEFAULT 0,
-            UNIQUE(referrer_id, referral_id)
-        )""",
-        
-        # Товары
-        """CREATE TABLE IF NOT EXISTS products (
-            id SERIAL PRIMARY KEY,
-            category TEXT NOT NULL,
-            name TEXT NOT NULL,
-            price_usd REAL NOT NULL,
-            description TEXT,
-            stock INTEGER DEFAULT -1,
-            is_active INTEGER DEFAULT 1,
-            sort_order INTEGER DEFAULT 0,
-            photo_url TEXT,
-            created_at TEXT,
-            updated_at TEXT,
-            sold_count INTEGER DEFAULT 0
-        )""",
-        
-        # Ожидающие действия
-        """CREATE TABLE IF NOT EXISTS pending_actions (
-            user_id BIGINT PRIMARY KEY,
-            action TEXT,
-            data TEXT,
-            created_at TEXT
-        )""",
-        
-        # История покупок
-        """CREATE TABLE IF NOT EXISTS purchase_history (
-            id SERIAL PRIMARY KEY,
-            user_id BIGINT,
-            product_id INTEGER,
-            product_name TEXT,
-            amount REAL,
-            status TEXT DEFAULT 'completed',
-            purchase_date TEXT,
-            completed_date TEXT
-        )""",
-        
-        # Промокоды
-        """CREATE TABLE IF NOT EXISTS promo_codes (
-            id SERIAL PRIMARY KEY,
-            code TEXT UNIQUE,
-            bonus_type TEXT DEFAULT 'discount',
-            bonus_value REAL,
-            target_type TEXT DEFAULT 'all',
-            target_id INTEGER DEFAULT 0,
-            max_entries INTEGER DEFAULT -1,
-            max_uses INTEGER DEFAULT -1,
-            used_count INTEGER DEFAULT 0,
-            expires_at TEXT,
-            is_active INTEGER DEFAULT 1,
-            created_by BIGINT,
-            created_at TEXT
-        )""",
-        
-        # Вводы промокодов
-        """CREATE TABLE IF NOT EXISTS promo_entries (
-            id SERIAL PRIMARY KEY,
-            promo_id INTEGER,
-            user_id BIGINT,
-            entered_at TEXT,
-            used INTEGER DEFAULT 0,
-            used_at TEXT,
-            transaction_id INTEGER
-        )""",
-    ]
     
-    for query in queries:
+    def execute(self, query: str, params: tuple = (), 
+                fetch: bool = False, commit: bool = False) -> Optional[List[Any]]:
+        """Безопасное выполнение запроса (работает с SQLite и PostgreSQL)"""
         try:
-            self.execute(query, commit=True)
-        except Exception as e:
-            logger.error(f"Error creating table: {e}")
-    
-def execute(self, query: str, params: tuple = (), 
-            fetch: bool = False, commit: bool = False) -> Optional[List[Any]]:
-    """Безопасное выполнение запроса (работает с SQLite и PostgreSQL)"""
-    try:
-        c = self.conn.cursor()
-        
-        # Для PostgreSQL заменяем ? на %s
-        if self.use_postgres:
-            query = query.replace('?', '%s')
+            c = self.conn.cursor()
             
-        c.execute(query, params)
-        
-        if commit:
-            self.conn.commit()
-        
-        if fetch:
+            # Для PostgreSQL заменяем ? на %s
             if self.use_postgres:
-                return c.fetchall()
-            else:
-                return c.fetchall()
-        return None
-        
-    except Exception as e:
-        logger.error(f"Database error: {e}")
-        logger.error(f"Query: {query}")
-        logger.error(f"Params: {params}")
-        if commit:
-            self.conn.rollback()
-        raise
+                query = query.replace('?', '%s')
+                
+            c.execute(query, params)
+            
+            if commit:
+                self.conn.commit()
+            
+            if fetch:
+                if self.use_postgres:
+                    return c.fetchall()
+                else:
+                    return c.fetchall()
+            return None
+            
+        except Exception as e:
+            logger.error(f"Database error: {e}")
+            logger.error(f"Query: {query}")
+            logger.error(f"Params: {params}")
+            if commit:
+                self.conn.rollback()
+            raise
     
     def init_tables(self):
         """Инициализация таблиц с поддержкой обоих движков"""
@@ -321,7 +203,7 @@ def execute(self, query: str, params: tuple = (),
                 "CREATE INDEX IF NOT EXISTS idx_promo_entries_user ON promo_entries(user_id)",
             ]
         else:
-            # SQLite синтаксис (твой существующий код)
+            # SQLite синтаксис
             queries = [
                 # Пользователи
                 """CREATE TABLE IF NOT EXISTS users (
@@ -457,13 +339,6 @@ def execute(self, query: str, params: tuple = (),
                 self.execute(query, commit=True)
             except Exception as e:
                 logger.error(f"Error creating table: {e}")
-                if self.use_postgres:
-                    # Для PostgreSQL пробуем создать таблицы без CHECK constraints
-                    if "syntax" in str(e).lower() or "check" in str(e).lower():
-                        logger.info("Retrying without CHECK constraints...")
-                        # Убираем CHECK из запроса и пробуем снова
-                        # Это упрощенная версия, в реальности нужно парсить запрос
-                        pass
     
     def seed_products(self):
         """Заполнение тестовыми товарами"""
@@ -509,10 +384,7 @@ def execute(self, query: str, params: tuple = (),
             fetch=True
         )
         if result:
-            if self.use_postgres:
-                return dict(result[0])
-            else:
-                return dict(result[0])
+            return dict(result[0])
         return None
     
     def invalidate_product_cache(self, product_id: int):
@@ -589,7 +461,10 @@ def execute(self, query: str, params: tuple = (),
             fetch=True
         )
         if result:
-            return result[0][0] if not self.use_postgres else result[0]['balance']
+            if self.use_postgres:
+                return result[0]['balance']
+            else:
+                return result[0][0]
         return 0.0
     
     def add_balance(self, user_id: int, amount: float) -> bool:
@@ -774,7 +649,11 @@ def execute(self, query: str, params: tuple = (),
             )
             
             if referrer and referrer[0]:
-                referrer_id = referrer[0][0] if not self.use_postgres else referrer[0]['referrer_id']
+                if self.use_postgres:
+                    referrer_id = referrer[0]['referrer_id']
+                else:
+                    referrer_id = referrer[0][0]
+                    
                 if referrer_id:
                     bonus = price * REFERRAL_BONUS
                     
@@ -1098,14 +977,24 @@ def execute(self, query: str, params: tuple = (),
 
     def search_users(self, query):
         """Поиск пользователей по ID или username"""
-        results = self.execute(
-            """SELECT user_id, username, first_name, balance 
-               FROM users 
-               WHERE user_id::text LIKE ? OR username LIKE ? OR first_name LIKE ?
-               LIMIT 20""",
-            (f'%{query}%', f'%{query}%', f'%{query}%'),
-            fetch=True
-        )
+        if self.use_postgres:
+            results = self.execute(
+                """SELECT user_id, username, first_name, balance 
+                   FROM users 
+                   WHERE user_id::text LIKE ? OR username LIKE ? OR first_name LIKE ?
+                   LIMIT 20""",
+                (f'%{query}%', f'%{query}%', f'%{query}%'),
+                fetch=True
+            )
+        else:
+            results = self.execute(
+                """SELECT user_id, username, first_name, balance 
+                   FROM users 
+                   WHERE user_id LIKE ? OR username LIKE ? OR first_name LIKE ?
+                   LIMIT 20""",
+                (f'%{query}%', f'%{query}%', f'%{query}%'),
+                fetch=True
+            )
         return [dict(row) for row in results] if results else []
     
     # === ТРАНЗАКЦИИ ===
@@ -1152,8 +1041,12 @@ def execute(self, query: str, params: tuple = (),
             "SELECT COUNT(*) as count, SUM(balance) as total FROM users", 
             fetch=True
         )[0]
-        stats['total_users'] = users['count'] if self.use_postgres else users[0]
-        stats['total_balance'] = users['total'] if self.use_postgres else (users[1] or 0)
+        if self.use_postgres:
+            stats['total_users'] = users['count']
+            stats['total_balance'] = users['total'] or 0
+        else:
+            stats['total_users'] = users[0]
+            stats['total_balance'] = users[1] or 0
         
         # Пользователи сегодня
         today = datetime.now().date().isoformat()
@@ -1162,15 +1055,22 @@ def execute(self, query: str, params: tuple = (),
             (today,),
             fetch=True
         )[0]
-        stats['users_today'] = users_today_result['count'] if self.use_postgres else (users_today_result[0] or 0)
+        if self.use_postgres:
+            stats['users_today'] = users_today_result['count'] or 0
+        else:
+            stats['users_today'] = users_today_result[0] or 0
         
         # Продажи
         sales = self.execute(
             "SELECT COUNT(*) as count, SUM(amount) as total FROM transactions WHERE type = 'purchase' AND status = 'completed'",
             fetch=True
         )[0]
-        stats['total_sales'] = sales['count'] if self.use_postgres else (sales[0] or 0)
-        stats['total_revenue'] = sales['total'] if self.use_postgres else (sales[1] or 0)
+        if self.use_postgres:
+            stats['total_sales'] = sales['count'] or 0
+            stats['total_revenue'] = sales['total'] or 0
+        else:
+            stats['total_sales'] = sales[0] or 0
+            stats['total_revenue'] = sales[1] or 0
         
         # Продажи сегодня
         sales_today = self.execute(
@@ -1178,15 +1078,22 @@ def execute(self, query: str, params: tuple = (),
             (today,),
             fetch=True
         )[0]
-        stats['sales_today'] = sales_today['count'] if self.use_postgres else (sales_today[0] or 0)
-        stats['revenue_today'] = sales_today['total'] if self.use_postgres else (sales_today[1] or 0)
+        if self.use_postgres:
+            stats['sales_today'] = sales_today['count'] or 0
+            stats['revenue_today'] = sales_today['total'] or 0
+        else:
+            stats['sales_today'] = sales_today[0] or 0
+            stats['revenue_today'] = sales_today[1] or 0
         
         # Товары
         products = self.execute(
             "SELECT COUNT(*) as count FROM products WHERE is_active = 1",
             fetch=True
         )[0]
-        stats['active_products'] = products['count'] if self.use_postgres else (products[0] or 0)
+        if self.use_postgres:
+            stats['active_products'] = products['count'] or 0
+        else:
+            stats['active_products'] = products[0] or 0
         
         return stats
     
@@ -1194,13 +1101,20 @@ def execute(self, query: str, params: tuple = (),
     def set_pending_action(self, user_id: int, action: str, data: Optional[str] = None):
         """Установить ожидающее действие"""
         now = datetime.now().isoformat()
-        self.execute(
-            """INSERT INTO pending_actions (user_id, action, data, created_at) 
-               VALUES (?, ?, ?, ?)
-               ON CONFLICT (user_id) DO UPDATE SET action = ?, data = ?, created_at = ?""",
-            (user_id, action, data, now, action, data, now),
-            commit=True
-        )
+        if self.use_postgres:
+            self.execute(
+                """INSERT INTO pending_actions (user_id, action, data, created_at) 
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT (user_id) DO UPDATE SET action = ?, data = ?, created_at = ?""",
+                (user_id, action, data, now, action, data, now),
+                commit=True
+            )
+        else:
+            self.execute(
+                "REPLACE INTO pending_actions (user_id, action, data, created_at) VALUES (?, ?, ?, ?)",
+                (user_id, action, data, now),
+                commit=True
+            )
     
     def get_pending_action(self, user_id: int) -> Optional[Tuple[str, Optional[str]]]:
         """Получить ожидающее действие"""
@@ -1210,7 +1124,10 @@ def execute(self, query: str, params: tuple = (),
             fetch=True
         )
         if result:
-            return (result[0]['action'], result[0]['data']) if self.use_postgres else (result[0][0], result[0][1])
+            if self.use_postgres:
+                return (result[0]['action'], result[0]['data'])
+            else:
+                return (result[0][0], result[0][1])
         return None
     
     def clear_pending_action(self, user_id: int):
