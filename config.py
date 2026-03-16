@@ -26,7 +26,7 @@ class Config:
         
         # База данных
         self.DB_FILE = os.getenv('DB_FILE', 'helpgrailed_bot.db')
-        self.DATABASE_URL = os.getenv('DATABASE_URL')  # для PostgreSQL на Render
+        self.DATABASE_URL = os.getenv('DATABASE_URL')
         
         # Реферальный бонус
         self.REFERRAL_BONUS = float(os.getenv('REFERRAL_BONUS', '0.1'))
@@ -59,9 +59,6 @@ class Config:
             }
         }
         
-        # Категории товаров - будут загружаться из БД при обращении
-        self._categories = self._load_categories()
-        
         # Список поддерживаемых валют в CryptoPay
         self.CRYPTO_CURRENCIES = {
             'USDT': 'USDT (TRC-20)',
@@ -80,38 +77,24 @@ class Config:
         
         self.validate()
     
-    def _load_categories(self):
-        """Загрузить категории из БД или использовать дефолтные"""
-        try:
-            # Пробуем загрузить из БД
-            from database import db
-            categories = db.get_categories()
-            if categories:
-                return categories
-        except:
-            pass
-        
-        # Если БД пустая или ошибка, возвращаем дефолтные
-        return {
-            'grailed_accounts': "📱 Grailed account's",
-            'paypal': "💳 PayPal",
-            'call_service': "📞 Прозвон сервис",
-            'grailed_likes': "❤️ Накрутка лайков на Grailed",
-            'ebay': "🏷 eBay",
-            'support': "🆘 Тех поддержка",
-        }
-    
     @property
     def CATEGORIES(self):
         """Геттер для категорий - всегда свежие из БД"""
         try:
             from database import db
-            categories = db.get_categories()
-            if categories:
-                return categories
-        except:
-            pass
-        return self._categories
+            # Возвращаем категории прямо из БД
+            return db.get_categories()
+        except Exception as e:
+            print(f"Error loading categories from DB: {e}")
+            # Возвращаем дефолтные, если БД недоступна (например, при первом запуске)
+            return {
+                'grailed_accounts': "📱 Grailed account's",
+                'paypal': "💳 PayPal",
+                'call_service': "📞 Прозвон сервис",
+                'grailed_likes': "❤️ Накрутка лайков на Grailed",
+                'ebay': "🏷 eBay",
+                'support': "🆘 Тех поддержка",
+            }
     
     def validate(self):
         """Валидация конфигурации"""
@@ -143,7 +126,8 @@ DB_FILE = config.DB_FILE
 DATABASE_URL = config.DATABASE_URL
 REFERRAL_BONUS = config.REFERRAL_BONUS
 LANGUAGES = config.LANGUAGES
-CATEGORIES = config.CATEGORIES  # Это теперь свойство, а не переменная
+# CATEGORIES = config.CATEGORIES  # НЕ РАСКОММЕНТИРУЙ!
 CRYPTO_CURRENCIES = config.CRYPTO_CURRENCIES
 TOP_CURRENCIES = config.TOP_CURRENCIES
 CHANNEL_URL = config.CHANNEL_URL
+# ВСЁ! ДАЛЬШЕ НИЧЕГО НЕ ДОБАВЛЯЙ!
