@@ -3,6 +3,9 @@ from telegram.ext import ContextTypes
 from database import db
 from keyboards.reply import main_menu, back_button, categories_menu
 from config import SUPPORT_CONTACT, ADMIN_IDS
+import logging
+
+logger = logging.getLogger(__name__)
 
 async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /menu - главное меню"""
@@ -18,29 +21,53 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /profile - профиль пользователя"""
     user = update.effective_user
     
-    purchases = db.execute(
-        "SELECT COUNT(*) FROM transactions WHERE user_id = ? AND type = 'purchase' AND status = 'completed'", 
+    # Получаем количество покупок
+    purchases_result = db.execute(
+        "SELECT COUNT(*) as count FROM transactions WHERE user_id = ? AND type = 'purchase' AND status = 'completed'", 
         (user.id,), 
         fetch=True
-    )[0][0] or 0
+    )
+    if purchases_result:
+        if db.use_postgres:
+            purchases = purchases_result[0]['count'] or 0
+        else:
+            purchases = purchases_result[0][0] or 0
+    else:
+        purchases = 0
     
-    total_spent = db.execute(
-        "SELECT SUM(amount) FROM transactions WHERE user_id = ? AND type = 'purchase' AND status = 'completed'", 
+    # Получаем сумму потраченного
+    spent_result = db.execute(
+        "SELECT SUM(amount) as total FROM transactions WHERE user_id = ? AND type = 'purchase' AND status = 'completed'", 
         (user.id,), 
         fetch=True
-    )[0][0] or 0
+    )
+    if spent_result and spent_result[0]:
+        if db.use_postgres:
+            total_spent = spent_result[0]['total'] or 0
+        else:
+            total_spent = spent_result[0][0] or 0
+    else:
+        total_spent = 0
     
-    referrals = db.execute(
-        "SELECT COUNT(*) FROM referrals WHERE referrer_id = ?", 
+    # Получаем количество рефералов
+    referrals_result = db.execute(
+        "SELECT COUNT(*) as count FROM referrals WHERE referrer_id = ?", 
         (user.id,), 
         fetch=True
-    )[0][0] or 0
+    )
+    if referrals_result:
+        if db.use_postgres:
+            referrals = referrals_result[0]['count'] or 0
+        else:
+            referrals = referrals_result[0][0] or 0
+    else:
+        referrals = 0
     
     text = (
         f"👤 <b>Профиль</b>\n\n"
         f"🆔 ID: <code>{user.id}</code>\n"
         f"📝 Username: @{user.username or 'нет'}\n"
-        f"💰 Баланс: ${db.get_balance(user.id)}\n"
+        f"💰 Баланс: ${db.get_balance(user.id):.2f}\n"
         f"📦 Покупок: {purchases}\n"
         f"💸 Всего потрачено: ${total_spent:.2f}\n"
         f"👥 Рефералов: {referrals}"
@@ -59,15 +86,16 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     text = (
         f"💰 <b>Баланс</b>\n\n"
-        f"Текущий баланс: ${balance}\n\n"
-        f"Пополнить или вывести средства?"
+        f"Текущий баланс: ${balance:.2f}\n\n"
+        f"Выберите действие:"
     )
     
     keyboard = [
         [
-            InlineKeyboardButton("💰 Пополнить", callback_data='deposit'),
-            InlineKeyboardButton("💸 Вывести", callback_data='withdraw')
+            InlineKeyboardButton("📥 Пополнить", callback_data='deposit'),
+            InlineKeyboardButton("📤 Вывести", callback_data='withdraw')
         ],
+        [InlineKeyboardButton("🎫 Промокод", callback_data='promo_code')],
         [InlineKeyboardButton("◀️ Назад", callback_data='menu')]
     ]
     
@@ -92,17 +120,33 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_username = (await context.bot.get_me()).username
     ref_link = f"https://t.me/{bot_username}?start=ref{user.id}"
     
-    referrals_count = db.execute(
-        "SELECT COUNT(*) FROM referrals WHERE referrer_id = ?", 
+    # Получаем количество рефералов
+    referrals_result = db.execute(
+        "SELECT COUNT(*) as count FROM referrals WHERE referrer_id = ?", 
         (user.id,), 
         fetch=True
-    )[0][0] or 0
+    )
+    if referrals_result:
+        if db.use_postgres:
+            referrals_count = referrals_result[0]['count'] or 0
+        else:
+            referrals_count = referrals_result[0][0] or 0
+    else:
+        referrals_count = 0
     
-    earned = db.execute(
-        "SELECT SUM(bonus) FROM referrals WHERE referrer_id = ?", 
+    # Получаем сумму заработка
+    earned_result = db.execute(
+        "SELECT SUM(bonus) as total FROM referrals WHERE referrer_id = ?", 
         (user.id,), 
         fetch=True
-    )[0][0] or 0
+    )
+    if earned_result and earned_result[0]:
+        if db.use_postgres:
+            earned = earned_result[0]['total'] or 0
+        else:
+            earned = earned_result[0][0] or 0
+    else:
+        earned = 0
     
     text = (
         f"🔗 <b>Реферальная программа</b>\n\n"
