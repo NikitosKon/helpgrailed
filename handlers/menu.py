@@ -200,10 +200,86 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await handle_custom_deposit(update, context, text)
         return
 
-    # Ввод промокода
+    # Ввод промокода - ИСПРАВЛЕНО!
     if action == 'enter_promo':
-        from handlers.promo import process_promo_input
-        await process_promo_input(update, context, text)
+        from config import ADMIN_IDS
+        code = text.strip().upper()
+        
+        # Проверяем промокод
+        valid, promo = db.validate_advanced_promo(code, user.id)
+        
+        if not valid:
+            await message.reply_text(f"❌ {promo}")
+            db.clear_pending_action(user.id)
+            return
+        
+        # Записываем ввод промокода
+        db.record_promo_entry(promo['id'], user.id)
+        
+        # Начисляем бонус в зависимости от типа
+        if promo['bonus_type'] == 'balance':
+            # Прямое начисление на баланс
+            amount = float(promo['bonus_value'])
+            db.add_balance(user.id, amount)
+            
+            # Создаем транзакцию
+            db.add_transaction(
+                user_id=user.id,
+                amount=amount,
+                type_='referral',
+                status='completed',
+                metadata={'promo_id': promo['id'], 'promo_code': code}
+            )
+            
+            # Получаем ID последней транзакции
+            trans_result = db.execute(
+                "SELECT id FROM transactions WHERE user_id = ? ORDER BY id DESC LIMIT 1",
+                (user.id,),
+                fetch=True
+            )
+            
+            if trans_result:
+                if db.use_postgres:
+                    trans_id = trans_result[0]['id']
+                else:
+                    trans_id = trans_result[0][0]
+                
+                # Отмечаем промокод как использованный
+                db.use_promo_entry(promo['id'], user.id, trans_id)
+            
+            await message.reply_text(
+                f"✅ Промокод активирован!\n"
+                f"💰 На баланс начислено: ${amount:.2f}\n"
+                f"💵 Текущий баланс: ${db.get_balance(user.id):.2f}"
+            )
+            
+            # Уведомление админам
+            for admin_id in ADMIN_IDS:
+                try:
+                    await context.bot.send_message(
+                        admin_id,
+                        f"🎫 <b>АКТИВАЦИЯ ПРОМОКОДА</b>\n\n"
+                        f"👤 Пользователь: <code>{user.id}</code> (@{user.username})\n"
+                        f"🔑 Промокод: <code>{code}</code>\n"
+                        f"💵 Начислено: ${amount:.2f}",
+                        parse_mode='HTML'
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to notify admin {admin_id}: {e}")
+        
+        elif promo['bonus_type'] in ['discount', 'percent']:
+            # Скидка на следующую покупку
+            context.user_data['active_promo'] = {
+                'id': promo['id'],
+                'type': promo['bonus_type'],
+                'value': promo['bonus_value']
+            }
+            await message.reply_text(
+                f"✅ Промокод активирован!\n"
+                f"💰 Скидка {promo['bonus_value']}% на следующую покупку"
+            )
+        
+        db.clear_pending_action(user.id)
         return
 
     # Начисление баланса админом
