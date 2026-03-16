@@ -7,7 +7,8 @@ from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from config import ADMIN_IDS, CATEGORIES
+from config import ADMIN_IDS
+from config import config  # Добавляем импорт config
 from database import Database
 
 logger = logging.getLogger(__name__)
@@ -392,7 +393,7 @@ async def handle_admin_add_product_input(update: Update, context: ContextTypes.D
         context.user_data['add_prod_name'] = text
         db.set_pending_action(user.id, 'admin_add_product_category')
         
-        categories = db.get_categories()
+        categories = config.CATEGORIES
         await update.message.reply_text(
             f"✅ Название: {text}\n\n"
             f"Введите категорию товара:\n"
@@ -401,8 +402,8 @@ async def handle_admin_add_product_input(update: Update, context: ContextTypes.D
         return
 
     elif action == 'admin_add_product_category':
-        categories = db.get_categories()
-        if text not in categories:
+        categories = config.CATEGORIES
+        if text not in config.CATEGORIES:
             await update.message.reply_text(f"❌ Неверная категория. Доступны: {', '.join(categories.keys())}")
             return
         context.user_data['add_prod_category'] = text
@@ -802,7 +803,7 @@ async def admin_list_categories(update: Update, context: ContextTypes.DEFAULT_TY
     """Показать список категорий из БД"""
     query = update.callback_query
     
-    categories = db.get_categories()
+    categories = config.CATEGORIES
     
     text = "📋 <b>Список категорий:</b>\n\n"
     for cat_id, cat_name in categories.items():
@@ -914,8 +915,8 @@ async def admin_edit_category_start(update: Update, context: ContextTypes.DEFAUL
     query = update.callback_query
     user = query.from_user
     
-    categories = db.get_categories()
-    if cat_id not in categories:
+    categories = config.CATEGORIES
+    if cat_id not in config.CATEGORIES:
         await query.edit_message_text("❌ Категория не найдена")
         return
     
@@ -961,7 +962,7 @@ async def admin_delete_category_list(update: Update, context: ContextTypes.DEFAU
     """Список категорий для удаления"""
     query = update.callback_query
     
-    categories = db.get_categories()
+    categories = config.CATEGORIES
     keyboard = []
     for cat_id, cat_name in categories.items():
         keyboard.append([InlineKeyboardButton(f"❌ {cat_name}", callback_data=f'admin_delete_cat_{cat_id}')])
@@ -978,7 +979,7 @@ async def admin_delete_category_confirm(update: Update, context: ContextTypes.DE
     """Подтверждение удаления категории"""
     query = update.callback_query
     
-    categories = db.get_categories()
+    categories = config.CATEGORIES
     if cat_id not in categories:
         await query.edit_message_text("❌ Категория не найдена")
         return
