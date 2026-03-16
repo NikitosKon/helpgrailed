@@ -59,95 +59,106 @@ async def check_pending_payments(context: ContextTypes.DEFAULT_TYPE):
     """Периодическая проверка и очистка неподтверждённых платежей"""
     logger.info("Checking pending payments...")
     
-    now = datetime.now()
-    
-    # 1. Удаляем старые неоплаченные инвойсы (старше 10 минут)
-    old_pending = db.execute(
-        """SELECT * FROM transactions 
-           WHERE status = 'pending' 
-           AND type = 'deposit'
-           AND datetime(created_at) < datetime('now', '-10 minutes')""",
-        fetch=True
-    )
-    
-    if old_pending:
-        logger.info(f"Found {len(old_pending)} expired payments")
-        for trans in old_pending:
-            trans = dict(trans)
-            # Обновляем статус на 'expired'
-            db.execute(
-                """UPDATE transactions 
-                   SET status = 'expired' 
-                   WHERE id = ?""",
-                (trans['id'],),
-                commit=True
-            )
-            logger.info(f"Payment {trans['invoice_id']} marked as expired (older than 10 min)")
-    
-    # 2. Проверяем актуальные pending транзакции (не старше 10 минут)
-    pending = db.execute(
-        """SELECT * FROM transactions 
-           WHERE status = 'pending' 
-           AND type = 'deposit'
-           AND datetime(created_at) >= datetime('now', '-10 minutes')""",
-        fetch=True
-    )
-    
-    if not pending:
-        logger.info("No active pending payments found")
-        return
-    
-    logger.info(f"Found {len(pending)} active pending payments")
-    
-    for trans in pending:
-        trans = dict(trans)
-        try:
-            logger.info(f"Checking invoice {trans['invoice_id']} for user {trans['user_id']}")
-            
-            invoice = await crypto.get_invoice_status(trans['invoice_id'])
-            
-            if invoice and invoice.get('status') == 'paid':
-                logger.info(f"Invoice {trans['invoice_id']} is paid!")
-                
-                db.add_balance(trans['user_id'], trans['amount'])
-                
+    try:
+        now = datetime.now()
+        
+        # 1. Удаляем старые неоплаченные инвойсы (старше 10 минут)
+        old_pending = db.execute(
+            """SELECT * FROM transactions 
+               WHERE status = 'pending' 
+               AND type = 'deposit'
+               AND datetime(created_at) < datetime('now', '-10 minutes')""",
+            fetch=True
+        )
+        
+        if old_pending:
+            logger.info(f"Found {len(old_pending)} expired payments")
+            for trans in old_pending:
+                trans = dict(trans)
+                # Обновляем статус на 'expired'
                 db.execute(
                     """UPDATE transactions 
-                       SET status = 'completed', completed_at = ? 
+                       SET status = 'expired' 
                        WHERE id = ?""",
-                    (datetime.now().isoformat(), trans['id']),
+                    (trans['id'],),
                     commit=True
                 )
+                logger.info(f"Payment {trans['invoice_id']} marked as expired (older than 10 min)")
+        
+        # 2. Проверяем актуальные pending транзакции (не старше 10 минут)
+        pending = db.execute(
+            """SELECT * FROM transactions 
+               WHERE status = 'pending' 
+               AND type = 'deposit'
+               AND datetime(created_at) >= datetime('now', '-10 minutes')""",
+            fetch=True
+        )
+        
+        if not pending:
+            logger.info("No active pending payments found")
+            return
+        
+        logger.info(f"Found {len(pending)} active pending payments")
+        
+        for trans in pending:
+            trans = dict(trans)
+            try:
+                logger.info(f"Checking invoice {trans['invoice_id']} for user {trans['user_id']}")
                 
-                try:
-                    await context.bot.send_message(
-                        trans['user_id'],
-                        f"✅ Баланс пополнен на ${trans['amount']:.2f}!\n"
-                        f"💰 Текущий баланс: ${db.get_balance(trans['user_id']):.2f}"
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to notify user: {e}")
+                invoice = await crypto.get_invoice_status(trans['invoice_id'])
+                
+                if invoice and invoice.get('status') == 'paid':
+                    logger.info(f"Invoice {trans['invoice_id']} is paid!")
                     
-                logger.info(f"Payment confirmed for user {trans['user_id']}")
-                
-                for admin_id in ADMIN_IDS:
+                    db.add_balance(trans['user_id'], trans['amount'])
+                    
+                    db.execute(
+                        """UPDATE transactions 
+                           SET status = 'completed', completed_at = ? 
+                           WHERE id = ?""",
+                        (datetime.now().isoformat(), trans['id']),
+                        commit=True
+                    )
+                    
                     try:
                         await context.bot.send_message(
-                            admin_id,
-                            f"💰 <b>ПОДТВЕРЖДЕНИЕ ОПЛАТЫ</b>\n\n"
-                            f"👤 Пользователь: <code>{trans['user_id']}</code>\n"
-                            f"💵 Сумма: ${trans['amount']:.2f}\n"
-                            f"🔗 Invoice: <code>{trans['invoice_id']}</code>",
-                            parse_mode='HTML'
+                            trans['user_id'],
+                            f"✅ Баланс пополнен на ${trans['amount']:.2f}!\n"
+                            f"💰 Текущий баланс: ${db.get_balance(trans['user_id']):.2f}"
                         )
-                    except:
-                        pass
-            else:
-                status = invoice.get('status') if invoice else 'unknown'
-                logger.info(f"Invoice {trans['invoice_id']} status: {status}")
-                
-        except Exception as e:
-            logger.error(f"Error checking payment {trans['id']}: {e}")
+                    except Exception as e:
+                        logger.error(f"Failed to notify user: {e}")
+                        
+                    logger.info(f"Payment confirmed for user {trans['user_id']}")
+                    
+                    for admin_id in ADMIN_IDS:
+                        try:
+                            await context.bot.send_message(
+                                admin_id,
+                                f"💰 <b>ПОДТВЕРЖДЕНИЕ ОПЛАТЫ</b>\n\n"
+                                f"👤 Пользователь: <code>{trans['user_id']}</code>\n"
+                                f"💵 Сумма: ${trans['amount']:.2f}\n"
+                                f"🔗 Invoice: <code>{trans['invoice_id']}</code>",
+                                parse_mode='HTML'
+                            )
+                        except:
+                            pass
+                else:
+                    status = invoice.get('status') if invoice else 'unknown'
+                    logger.info(f"Invoice {trans['invoice_id']} status: {status}")
+                    
+            except Exception as e:
+                logger.error(f"Error checking payment {trans['id']}: {e}")
+    
+    except Exception as e:
+        logger.error(f"Error in check_pending_payments: {e}")
+        # Делаем rollback на всякий случай
+        if hasattr(db, 'conn') and db.use_postgres:
+            try:
+                db.conn.rollback()
+                logger.info("Transaction rolled back after error")
+            except:
+                pass
 
 
 async def payment_notification_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):

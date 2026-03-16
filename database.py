@@ -39,35 +39,44 @@ class Database:
         self.init_tables()
         self.seed_products()
     
-    def execute(self, query: str, params: tuple = (), 
-                fetch: bool = False, commit: bool = False) -> Optional[List[Any]]:
-        """Безопасное выполнение запроса (работает с SQLite и PostgreSQL)"""
-        try:
-            c = self.conn.cursor()
+def execute(self, query: str, params: tuple = (), 
+            fetch: bool = False, commit: bool = False) -> Optional[List[Any]]:
+    """Безопасное выполнение запроса (работает с SQLite и PostgreSQL)"""
+    try:
+        c = self.conn.cursor()
+        
+        # Для PostgreSQL заменяем ? на %s
+        if self.use_postgres:
+            query = query.replace('?', '%s')
             
-            # Для PostgreSQL заменяем ? на %s
+        c.execute(query, params)
+        
+        if commit:
+            self.conn.commit()
+        
+        if fetch:
             if self.use_postgres:
-                query = query.replace('?', '%s')
-                
-            c.execute(query, params)
-            
-            if commit:
-                self.conn.commit()
-            
-            if fetch:
-                if self.use_postgres:
-                    return c.fetchall()
-                else:
-                    return c.fetchall()
-            return None
-            
-        except Exception as e:
-            logger.error(f"Database error: {e}")
-            logger.error(f"Query: {query}")
-            logger.error(f"Params: {params}")
-            if commit:
+                return c.fetchall()
+            else:
+                return c.fetchall()
+        return None
+        
+    except Exception as e:
+        logger.error(f"Database error: {e}")
+        logger.error(f"Query: {query}")
+        logger.error(f"Params: {params}")
+        
+        # Для PostgreSQL делаем rollback при ошибке
+        if self.use_postgres:
+            try:
                 self.conn.rollback()
-            raise
+                logger.info("Transaction rolled back")
+            except:
+                pass
+        
+        if commit:
+            self.conn.rollback()
+        raise
     
     def init_tables(self):
         """Инициализация таблиц с поддержкой обоих движков"""
