@@ -322,7 +322,8 @@ def main():
         allowed_updates=['message', 'callback_query'],
         drop_pending_updates=True
     )
-
+    
+    application.add_handler(CommandHandler("checkcats", check_categories_command))
 
 if __name__ == '__main__':
     main()

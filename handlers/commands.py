@@ -206,3 +206,35 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='HTML'
     )
+
+async def check_categories_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Проверка категорий в БД (только для админов)"""
+    user = update.effective_user
+    
+    if user.id not in ADMIN_IDS:
+        return
+    
+    # Проверяем через config
+    from config import config
+    config_cats = config.CATEGORIES
+    
+    # Проверяем напрямую из БД
+    db_cats = db.get_categories()
+    
+    text = f"📊 <b>Диагностика категорий</b>\n\n"
+    
+    text += "📂 <b>Из config.CATEGORIES:</b>\n"
+    if config_cats:
+        for cat_id, cat_name in config_cats.items():
+            text += f"• {cat_id}: {cat_name}\n"
+    else:
+        text += "❌ Пусто!\n"
+    
+    text += f"\n📂 <b>Из БД (db.get_categories()):</b>\n"
+    if db_cats:
+        for cat_id, cat_name in db_cats.items():
+            text += f"• {cat_id}: {cat_name}\n"
+    else:
+        text += "❌ Пусто!\n"
+    
+    await update.message.reply_text(text, parse_mode='HTML')
