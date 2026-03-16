@@ -193,6 +193,16 @@ class Database:
                     FOREIGN KEY (promo_id) REFERENCES promo_codes(id),
                     FOREIGN KEY (user_id) REFERENCES users(user_id)
                 )""",
+                
+                # Таблица категорий для PostgreSQL
+                """CREATE TABLE IF NOT EXISTS categories (
+                    id SERIAL PRIMARY KEY,
+                    cat_id TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
+                    sort_order INTEGER DEFAULT 0,
+                    created_at TEXT,
+                    updated_at TEXT
+                )""",
             ]
         else:
             # SQLite синтаксис
@@ -306,6 +316,16 @@ class Database:
                     transaction_id INTEGER,
                     FOREIGN KEY (promo_id) REFERENCES promo_codes(id),
                     FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )""",
+
+                # Таблица категорий для SQLite
+                """CREATE TABLE IF NOT EXISTS categories (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    cat_id TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
+                    sort_order INTEGER DEFAULT 0,
+                    created_at TEXT,
+                    updated_at TEXT
                 )""",
             ]
         
@@ -543,6 +563,98 @@ class Database:
         except Exception as e:
             logger.error(f"Failed to delete product {product_id}: {e}")
             return False
+    
+    # === КАТЕГОРИИ ===
+    def get_categories(self):
+        """Получить все категории из БД"""
+        try:
+            result = self.execute(
+                "SELECT cat_id, name FROM categories ORDER BY sort_order",
+                fetch=True
+            )
+            
+            categories = {}
+            if result:
+                for row in result:
+                    if self.use_postgres:
+                        categories[row['cat_id']] = row['name']
+                    else:
+                        categories[row[0]] = row[1]
+            
+            # Если в БД нет категорий, загружаем из config
+            if not categories:
+                from config import CATEGORIES as DEFAULT_CATEGORIES
+                for cat_id, name in DEFAULT_CATEGORIES.items():
+                    self.add_category(cat_id, name)
+                    categories[cat_id] = name
+            
+            return categories
+        except Exception as e:
+            logger.error(f"Error getting categories: {e}")
+            # Если таблицы нет или ошибка, возвращаем из config
+            from config import CATEGORIES as DEFAULT_CATEGORIES
+            return DEFAULT_CATEGORIES.copy()
+
+    def add_category(self, cat_id, name, sort_order=0):
+        """Добавить категорию"""
+        now = datetime.now().isoformat()
+        try:
+            self.execute(
+                """INSERT INTO categories (cat_id, name, sort_order, created_at, updated_at) 
+                   VALUES (?, ?, ?, ?, ?)""",
+                (cat_id, name, sort_order, now, now),
+                commit=True
+            )
+            logger.info(f"Category added: {cat_id} - {name}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add category: {e}")
+            return False
+
+    def update_category(self, cat_id, name):
+        """Обновить название категории"""
+        now = datetime.now().isoformat()
+        try:
+            self.execute(
+                "UPDATE categories SET name = ?, updated_at = ? WHERE cat_id = ?",
+                (name, now, cat_id),
+                commit=True
+            )
+            logger.info(f"Category updated: {cat_id} - {name}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update category: {e}")
+            return False
+
+    def delete_category(self, cat_id):
+        """Удалить категорию"""
+        try:
+            # Проверяем, есть ли товары в этой категории
+            products = self.execute(
+                "SELECT COUNT(*) as count FROM products WHERE category = ?",
+                (cat_id,),
+                fetch=True
+            )
+            
+            if products:
+                if self.use_postgres:
+                    count = products[0]['count']
+                else:
+                    count = products[0][0]
+                
+                if count > 0:
+                    return False, f"Нельзя удалить: в категории {count} товаров"
+            
+            self.execute(
+                "DELETE FROM categories WHERE cat_id = ?",
+                (cat_id,),
+                commit=True
+            )
+            logger.info(f"Category deleted: {cat_id}")
+            return True, "Категория удалена"
+        except Exception as e:
+            logger.error(f"Failed to delete category: {e}")
+            return False, str(e)
     
     # === ПОКУПКИ ===
     def purchase(self, user_id: int, product_id: int) -> Tuple[bool, str, Optional[dict]]:
