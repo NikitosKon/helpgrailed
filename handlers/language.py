@@ -1,6 +1,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from database import db
+from keyboards.reply import main_menu
 from config import LANGUAGES
 import logging
 
@@ -25,10 +26,16 @@ async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("◀️ Назад", callback_data='menu')]
     ]
     
-    await update.message.reply_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    else:
+        await update.message.reply_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
 async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик выбора языка"""
@@ -48,12 +55,12 @@ async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Очищаем user_data при смене языка
     context.user_data.clear()
     
-    # Показываем подтверждение
+    # Показываем подтверждение и сразу главное меню
     text = LANGUAGES[lang]['language_changed']
     
-    keyboard = [[InlineKeyboardButton(LANGUAGES[lang]['main_menu'], callback_data='menu')]]
+    # Сначала показываем подтверждение
+    await query.edit_message_text(text)
     
-    await query.edit_message_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    # Потом сразу показываем главное меню
+    from handlers.start import start_command
+    await start_command(update, context)

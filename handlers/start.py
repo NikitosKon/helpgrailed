@@ -1,6 +1,7 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
+from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from database import db
+from keyboards.reply import main_menu
 from config import LANGUAGES
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -20,7 +21,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     existing_user = db.get_user(user.id)
     
     if not existing_user:
-        # Новый пользователь - показываем выбор языка
+        # Новый пользователь - регистрируем и показываем выбор языка
+        db.register_user(user.id, user.username, user.first_name, referrer_id)
+        
         text = "🌐 <b>Вітаємо! / Welcome! / Добро пожаловать!</b>\n\n"
         text += "Оберіть мову:\nChoose language:\nВыберите язык:"
         
@@ -31,9 +34,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ],
             [InlineKeyboardButton("🇺🇦 Українська", callback_data='lang_uk')]
         ]
-        
-        # Регистрируем пользователя с временным языком (потом обновится)
-        db.register_user(user.id, user.username, user.first_name, referrer_id)
         
         if update.callback_query:
             await update.callback_query.edit_message_text(
@@ -50,17 +50,18 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         # Существующий пользователь - показываем главное меню
         lang = existing_user.get('language', 'ru')
-        text = LANGUAGES[lang]['welcome'].format(name=user.first_name)
-        
-        from keyboards.reply import main_menu
         
         if update.callback_query:
+            # Если это callback (например после смены языка)
+            text = LANGUAGES[lang]['welcome'].format(name=user.first_name)
             await update.callback_query.edit_message_text(
                 text,
                 reply_markup=main_menu(user.id),
                 parse_mode='HTML'
             )
         else:
+            # Если это обычная команда /start
+            text = LANGUAGES[lang]['welcome'].format(name=user.first_name)
             await update.message.reply_text(
                 text,
                 reply_markup=main_menu(user.id),

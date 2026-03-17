@@ -4,8 +4,6 @@ from database import db
 
 def get_text(key, user_id=None, **kwargs):
     """Получить текст на языке пользователя"""
-    from database import db
-    
     # Определяем язык пользователя
     lang = 'ru'  # по умолчанию
     if user_id:
@@ -18,16 +16,16 @@ def get_text(key, user_id=None, **kwargs):
     return text.format(**kwargs) if kwargs else text
 
 def main_menu(user_id):
-    """Главное меню (только inline кнопки, без текстовых)"""
+    """Главное меню"""
     balance = db.get_balance(user_id)
     
     keyboard = [
-        [InlineKeyboardButton(get_text('services'), callback_data='services')],
+        [InlineKeyboardButton(get_text('services', user_id), callback_data='services')],
         [
-            InlineKeyboardButton(get_text('balance', balance=balance), callback_data='balance'),
-            InlineKeyboardButton(get_text('profile'), callback_data='profile')
+            InlineKeyboardButton(get_text('balance', user_id, balance=balance), callback_data='balance'),
+            InlineKeyboardButton(get_text('profile', user_id), callback_data='profile')
         ],
-        [InlineKeyboardButton(get_text('referral'), callback_data='referral')],
+        [InlineKeyboardButton(get_text('referral', user_id), callback_data='referral')],
     ]
     
     if user_id in ADMIN_IDS:
@@ -35,26 +33,25 @@ def main_menu(user_id):
     
     return InlineKeyboardMarkup(keyboard)
 
-def back_button(callback_data='menu'):
+def back_button(callback_data='menu', user_id=None):
     """Кнопка назад"""
-    return InlineKeyboardMarkup([[InlineKeyboardButton(get_text('back'), callback_data=callback_data)]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton(get_text('back', user_id), callback_data=callback_data)]])
 
-def cancel_button():
+def cancel_button(user_id=None):
     """Кнопка отмены"""
     return InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data='cancel_input')]])
 
-def categories_menu():
+def categories_menu(user_id=None):
     """Меню категорий из БД"""
-    # Получаем категории из базы данных
     categories = db.get_categories()
     
     keyboard = []
     for cat_id, cat_name in categories.items():
         keyboard.append([InlineKeyboardButton(cat_name, callback_data=f'cat_{cat_id}')])
-    keyboard.append([InlineKeyboardButton(get_text('back'), callback_data='menu')])
+    keyboard.append([InlineKeyboardButton(get_text('back', user_id), callback_data='menu')])
     return InlineKeyboardMarkup(keyboard)
 
-def currency_menu():
+def currency_menu(user_id=None):
     """Меню выбора валюты"""
     keyboard = []
     row = []
@@ -67,10 +64,10 @@ def currency_menu():
             row = []
     if row:
         keyboard.append(row)
-    keyboard.append([InlineKeyboardButton(get_text('back'), callback_data='balance')])
+    keyboard.append([InlineKeyboardButton(get_text('back', user_id), callback_data='balance')])
     return InlineKeyboardMarkup(keyboard)
 
-def amount_menu(currency):
+def amount_menu(currency, user_id=None):
     """Меню выбора суммы"""
     amounts = [10, 25, 50, 100, 250, 500]
     keyboard = []
@@ -84,12 +81,12 @@ def amount_menu(currency):
     if row:
         keyboard.append(row)
     keyboard.append([InlineKeyboardButton("💰 Другая сумма", callback_data=f'amount_{currency}_custom')])
-    keyboard.append([InlineKeyboardButton(get_text('back'), callback_data='deposit')])
+    keyboard.append([InlineKeyboardButton(get_text('back', user_id), callback_data='deposit')])
     return InlineKeyboardMarkup(keyboard)
 
-def deposit_menu():
+def deposit_menu(user_id=None):
     """Меню пополнения"""
     keyboard = [
-        [InlineKeyboardButton(get_text('back'), callback_data='balance')]
+        [InlineKeyboardButton(get_text('back', user_id), callback_data='balance')]
     ]
     return InlineKeyboardMarkup(keyboard)
