@@ -11,7 +11,6 @@ async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /language - показать выбор языка"""
     user = update.effective_user
     
-    # Получаем текущий язык пользователя
     user_data = db.get_user(user.id)
     current_lang = user_data.get('language', 'ru') if user_data else 'ru'
     
@@ -52,15 +51,15 @@ async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         commit=True
     )
     
-    # Очищаем user_data при смене языка
+    # Очищаем user_data
     context.user_data.clear()
     
-    # Показываем подтверждение и сразу главное меню
-    text = LANGUAGES[lang]['language_changed']
+    # Получаем пользователя и показываем главное меню
+    user_data = db.get_user(user.id)
+    text = LANGUAGES[lang]['welcome'].format(name=user.first_name)
     
-    # Сначала показываем подтверждение
-    await query.edit_message_text(text)
-    
-    # Потом сразу показываем главное меню
-    from handlers.start import start_command
-    await start_command(update, context)
+    await query.edit_message_text(
+        text,
+        reply_markup=main_menu(user.id),
+        parse_mode='HTML'
+    )

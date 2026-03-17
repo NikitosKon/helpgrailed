@@ -5,7 +5,7 @@ from database import db
 def get_text(key, user_id=None, **kwargs):
     """Получить текст на языке пользователя"""
     # Определяем язык пользователя
-    lang = 'ru'  # по умолчанию
+    lang = 'ru'
     if user_id:
         user = db.get_user(user_id)
         if user and user.get('language'):

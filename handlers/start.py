@@ -1,4 +1,4 @@
-from telegram import Update, ReplyKeyboardRemove
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from database import db
 from keyboards.reply import main_menu
@@ -17,11 +17,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
     
-    # Проверяем, новый ли пользователь
+    # Получаем пользователя из БД
     existing_user = db.get_user(user.id)
     
+    # Если пользователь НОВЫЙ - регистрируем и показываем ТОЛЬКО выбор языка
     if not existing_user:
-        # Новый пользователь - регистрируем и показываем выбор языка
         db.register_user(user.id, user.username, user.first_name, referrer_id)
         
         text = "🌐 <b>Вітаємо! / Welcome! / Добро пожаловать!</b>\n\n"
@@ -47,30 +47,28 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='HTML'
             )
+        return  # ВАЖНО: выходим, не показывая меню!
+    
+    # Если пользователь существует - показываем меню на его языке
+    lang = existing_user.get('language', 'ru')
+    text = LANGUAGES[lang]['welcome'].format(name=user.first_name)
+    
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text,
+            reply_markup=main_menu(user.id),
+            parse_mode='HTML'
+        )
     else:
-        # Существующий пользователь - показываем главное меню
-        lang = existing_user.get('language', 'ru')
+        await update.message.reply_text(
+            text,
+            reply_markup=main_menu(user.id),
+            parse_mode='HTML'
+        )
         
-        if update.callback_query:
-            # Если это callback (например после смены языка)
-            text = LANGUAGES[lang]['welcome'].format(name=user.first_name)
-            await update.callback_query.edit_message_text(
-                text,
-                reply_markup=main_menu(user.id),
-                parse_mode='HTML'
-            )
-        else:
-            # Если это обычная команда /start
-            text = LANGUAGES[lang]['welcome'].format(name=user.first_name)
-            await update.message.reply_text(
-                text,
-                reply_markup=main_menu(user.id),
-                parse_mode='HTML'
-            )
-            
-            # Отправляем невидимое сообщение для удаления клавиатуры
-            await update.message.reply_chat_action("typing")
-            await update.message.reply_text(
-                "⠀",
-                reply_markup=ReplyKeyboardRemove()
-            )
+        # Отправляем невидимое сообщение для удаления клавиатуры
+        await update.message.reply_chat_action("typing")
+        await update.message.reply_text(
+            "⠀",
+            reply_markup=ReplyKeyboardRemove()
+        )
