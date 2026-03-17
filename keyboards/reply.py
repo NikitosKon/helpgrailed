@@ -41,8 +41,16 @@ def cancel_button(user_id=None):
     return InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data='cancel_input')]])
 
 def categories_menu(user_id=None):
-    """Меню категорий из БД"""
-    categories = db.get_categories()
+    """Меню категорий из БД на языке пользователя"""
+    # Определяем язык пользователя
+    lang = 'ru'
+    if user_id:
+        user = db.get_user(user_id)
+        if user and user.get('language'):
+            lang = user.get('language')
+    
+    # Получаем категории на нужном языке
+    categories = db.get_categories(lang)
     
     keyboard = []
     for cat_id, cat_name in categories.items():

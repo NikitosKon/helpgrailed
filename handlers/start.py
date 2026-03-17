@@ -25,8 +25,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.register_user(user.id, user.username, user.first_name, referrer_id)
     
     # ВСЕГДА показываем выбор языка (и новым, и старым)
-    text = "🌐 <b>Вітаємо! / Welcome! / Добро пожаловать!</b>\n\n"
-    text += "Оберіть мову:\nChoose language:\nВыберите язык:"
+    text = "🌐 <b>Welcome!</b>\n\n"
+    text += "Choose your language:"
     
     keyboard = [
         [
