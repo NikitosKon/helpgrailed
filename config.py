@@ -144,13 +144,21 @@ class Config:
             raise ValueError("❌ Не указаны администраторы")
     
     def get_text(self, key: str, lang: str = 'ru', **kwargs) -> str:
-    """Получить текст на нужном языке"""
-    # Если язык не указан, используем русский
-    if lang not in self.LANGUAGES:
-        lang = 'ru'
-    
-    text = self.LANGUAGES[lang].get(key, key)
-    return text.format(**kwargs) if kwargs else text
+        """Получить текст на нужном языке"""
+        # Проверяем, существует ли указанный язык
+        if lang not in self.LANGUAGES:
+            lang = 'ru'
+        
+        # Получаем текст
+        text = self.LANGUAGES[lang].get(key, key)
+        
+        # Подставляем параметры, если есть
+        if kwargs:
+            try:
+                return text.format(**kwargs)
+            except:
+                return text
+        return text
 
 
 # Создаем экземпляр config
