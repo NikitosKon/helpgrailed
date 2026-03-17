@@ -162,13 +162,15 @@ class Database:
                     FOREIGN KEY (user_id) REFERENCES users(user_id)
                 )""",
                 """CREATE TABLE IF NOT EXISTS categories (
-                    id SERIAL PRIMARY KEY,
-                    cat_id TEXT UNIQUE NOT NULL,
-                    name TEXT NOT NULL,
-                    sort_order INTEGER DEFAULT 0,
-                    created_at TEXT,
-                    updated_at TEXT
-                )""",
+    		    id SERIAL PRIMARY KEY,
+    	            cat_id TEXT UNIQUE NOT NULL,
+    		    name_ru TEXT NOT NULL,
+    		    name_uk TEXT,
+   	            name_en TEXT,
+   		    sort_order INTEGER DEFAULT 0,
+    	            created_at TEXT,
+    		    updated_at TEXT
+		)""",
             ]
         else:
             queries = [
@@ -492,11 +494,11 @@ class Database:
             logger.error(f"Failed to delete product {product_id}: {e}")
             return False
     
-    def get_categories(self) -> Dict[str, str]:
-        """Получить все категории из БД"""
+    def get_categories(self, lang='ru') -> Dict[str, str]:
+        """Получить все категории из БД на нужном языке"""
         try:
             result = self.execute(
-                "SELECT cat_id, name FROM categories ORDER BY sort_order",
+                "SELECT cat_id, name_ru, name_uk, name_en FROM categories ORDER BY sort_order",
                 fetch=True
             )
             
@@ -504,10 +506,24 @@ class Database:
             if result:
                 for row in result:
                     if self.use_postgres:
-                        categories[row['cat_id']] = row['name']
+                        cat_id = row['cat_id']
+                        if lang == 'uk' and row['name_uk']:
+                            name = row['name_uk']
+                        elif lang == 'en' and row['name_en']:
+                            name = row['name_en']
+                        else:
+                            name = row['name_ru']
                     else:
-                        categories[row[0]] = row[1]
-                logger.info(f"Loaded {len(categories)} categories from DB")
+                        cat_id = row[0]
+                        if lang == 'uk' and row[2]:
+                            name = row[2]
+                        elif lang == 'en' and row[3]:
+                            name = row[3]
+                        else:
+                            name = row[1]
+                    
+                    categories[cat_id] = name
+                logger.info(f"Loaded {len(categories)} categories from DB for lang {lang}")
                 return categories
             else:
                 logger.warning("No categories found in database")
@@ -515,40 +531,60 @@ class Database:
         except Exception as e:
             logger.error(f"Error getting categories: {e}")
             return {}
-    
-    def add_category(self, cat_id: str, name: str, sort_order: int = 0) -> bool:
-        """Добавить категорию"""
+
+    def add_category(self, cat_id: str, name_ru: str, name_uk: str = None, name_en: str = None, sort_order: int = 0) -> bool:
+        """Добавить категорию с переводами"""
         now = datetime.now().isoformat()
         try:
             if self.use_postgres:
-                query = """INSERT INTO categories (cat_id, name, sort_order, created_at, updated_at) 
-                           VALUES (%s, %s, %s, %s, %s)"""
-                params = (cat_id, name, sort_order, now, now)
+                query = """INSERT INTO categories (cat_id, name_ru, name_uk, name_en, sort_order, created_at, updated_at) 
+                           VALUES (%s, %s, %s, %s, %s, %s, %s)"""
+                params = (cat_id, name_ru, name_uk, name_en, sort_order, now, now)
             else:
-                query = """INSERT INTO categories (cat_id, name, sort_order, created_at, updated_at) 
-                           VALUES (?, ?, ?, ?, ?)"""
-                params = (cat_id, name, sort_order, now, now)
+                query = """INSERT INTO categories (cat_id, name_ru, name_uk, name_en, sort_order, created_at, updated_at) 
+                           VALUES (?, ?, ?, ?, ?, ?, ?)"""
+                params = (cat_id, name_ru, name_uk, name_en, sort_order, now, now)
             
             self.execute(query, params, commit=True)
-            logger.info(f"Category added: {cat_id} - {name}")
+            logger.info(f"Category added: {cat_id}")
             return True
         except Exception as e:
             logger.error(f"Failed to add category {cat_id}: {e}")
             return False
-    
-    def update_category(self, cat_id: str, name: str) -> bool:
-        """Обновить название категории"""
+
+    def update_category(self, cat_id: str, name_ru: str = None, name_uk: str = None, name_en: str = None) -> bool:
+        """Обновить переводы категории"""
         now = datetime.now().isoformat()
+        updates = []
+        params = []
+        
+        if name_ru:
+            updates.append("name_ru = ?")
+            params.append(name_ru)
+        if name_uk:
+            updates.append("name_uk = ?")
+            params.append(name_uk)
+        if name_en:
+            updates.append("name_en = ?")
+            params.append(name_en)
+        
+        if not updates:
+            return False
+        
+        updates.append("updated_at = ?")
+        params.append(now)
+        params.append(cat_id)
+        
+        if self.use_postgres:
+            # Для PostgreSQL заменяем ? на %s
+            pg_updates = [u.replace('?', '%s') for u in updates]
+            query = f"UPDATE categories SET {', '.join(pg_updates)} WHERE cat_id = %s"
+        else:
+            query = f"UPDATE categories SET {', '.join(updates)} WHERE cat_id = ?"
+        
         try:
-            if self.use_postgres:
-                query = "UPDATE categories SET name = %s, updated_at = %s WHERE cat_id = %s"
-                params = (name, now, cat_id)
-            else:
-                query = "UPDATE categories SET name = ?, updated_at = ? WHERE cat_id = ?"
-                params = (name, now, cat_id)
-            
-            self.execute(query, params, commit=True)
-            logger.info(f"Category updated: {cat_id} - {name}")
+            self.execute(query, tuple(params), commit=True)
+            logger.info(f"Category updated: {cat_id}")
             return True
         except Exception as e:
             logger.error(f"Failed to update category {cat_id}: {e}")
