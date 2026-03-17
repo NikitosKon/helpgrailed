@@ -4,12 +4,8 @@ import asyncio
 import re
 import os
 from datetime import datetime, timedelta
-from aiohttp import web  # Добавленный импорт
-from handlers.commands import (
-    menu_command, profile_command, balance_command,
-    services_command, referral_command, help_command, admin_command,
-    fix_categories_command  # <--- добавь эту строку
-)
+from aiohttp import web
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler, 
@@ -24,9 +20,11 @@ from crypto import crypto
 from handlers.start import start_command
 from handlers.menu import button_handler, text_handler
 from handlers.admin import handle_admin
+from handlers.language import language_command, language_callback
 from handlers.commands import (
     menu_command, profile_command, balance_command,
-    services_command, referral_command, help_command, admin_command
+    services_command, referral_command, help_command, admin_command,
+    fix_categories_command, check_categories_command
 )
 
 # Настройка логирования
@@ -41,7 +39,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# === НОВЫЙ КОД: Healthcheck сервер для Render ===
+# === Healthcheck сервер для Render ===
 async def healthcheck(request):
     """Простой healthcheck для Render"""
     return web.Response(text="Bot is running")
@@ -58,7 +56,6 @@ async def run_healthcheck():
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
     logger.info(f"✅ Healthcheck server started on port {port}")
-# ============================================
 
 
 async def set_commands(application: Application):
@@ -71,6 +68,7 @@ async def set_commands(application: Application):
         ("services", "🛒 Услуги"),
         ("referral", "🔗 Рефералка"),
         ("help", "❓ Помощь"),
+        ("language", "🌐 Выбрать язык"),
         ("admin", "👑 Админ-панель"),
     ]
     
@@ -94,14 +92,12 @@ async def check_pending_payments(context: ContextTypes.DEFAULT_TYPE):
         
         # 1. Удаляем старые неоплаченные инвойсы (старше 10 минут)
         if use_postgres:
-            # PostgreSQL запрос
             old_pending = db.execute(
                 "SELECT * FROM transactions WHERE status = 'pending' AND type = 'deposit' AND created_at < %s",
                 (ten_minutes_ago,),
                 fetch=True
             )
         else:
-            # SQLite запрос
             old_pending = db.execute(
                 "SELECT * FROM transactions WHERE status = 'pending' AND type = 'deposit' AND datetime(created_at) < datetime('now', '-10 minutes')",
                 fetch=True
@@ -111,7 +107,6 @@ async def check_pending_payments(context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"Found {len(old_pending)} expired payments")
             for trans in old_pending:
                 trans_dict = dict(trans) if not isinstance(trans, dict) else trans
-                # Обновляем статус на 'expired'
                 if use_postgres:
                     db.execute(
                         "UPDATE transactions SET status = 'expired' WHERE id = %s",
@@ -128,14 +123,12 @@ async def check_pending_payments(context: ContextTypes.DEFAULT_TYPE):
         
         # 2. Проверяем актуальные pending транзакции (не старше 10 минут)
         if use_postgres:
-            # PostgreSQL запрос
             pending = db.execute(
                 "SELECT * FROM transactions WHERE status = 'pending' AND type = 'deposit' AND created_at >= %s",
                 (ten_minutes_ago,),
                 fetch=True
             )
         else:
-            # SQLite запрос
             pending = db.execute(
                 "SELECT * FROM transactions WHERE status = 'pending' AND type = 'deposit' AND datetime(created_at) >= datetime('now', '-10 minutes')",
                 fetch=True
@@ -204,7 +197,6 @@ async def check_pending_payments(context: ContextTypes.DEFAULT_TYPE):
     
     except Exception as e:
         logger.error(f"Error in check_pending_payments: {e}")
-        # Делаем rollback на всякий случай
         if hasattr(db, 'conn') and hasattr(db, 'use_postgres') and db.use_postgres:
             try:
                 db.conn.rollback()
@@ -275,19 +267,18 @@ async def post_init(application: Application):
     # Проверка платежей каждые 60 секунд
     application.job_queue.run_repeating(
         check_pending_payments,
-        interval=60,  # Каждую минуту
+        interval=60,
         first=10
     )
     
     logger.info("Bot initialized successfully")
 
 
-# === ИЗМЕНЁННАЯ ФУНКЦИЯ main() ===
 def main():
     """Запуск бота"""
     logger.info("Starting bot with healthcheck server...")
     
-    # Запускаем healthcheck сервер в отдельном цикле событий
+    # Запускаем healthcheck сервер
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.create_task(run_healthcheck())
@@ -308,11 +299,16 @@ def main():
     application.add_handler(CommandHandler("services", services_command))
     application.add_handler(CommandHandler("referral", referral_command))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("language", language_command))
     application.add_handler(CommandHandler("admin", admin_command))
     application.add_handler(CommandHandler("fixcats", fix_categories_command))
+    application.add_handler(CommandHandler("checkcats", check_categories_command))
 
-    # Регистрируем остальные обработчики
+    # Регистрируем обработчики callback-запросов
+    application.add_handler(CallbackQueryHandler(language_callback, pattern='^lang_'))
     application.add_handler(CallbackQueryHandler(button_handler))
+    
+    # Регистрируем обработчики сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     application.add_handler(MessageHandler(filters.PHOTO, text_handler))
     
@@ -327,8 +323,7 @@ def main():
         allowed_updates=['message', 'callback_query'],
         drop_pending_updates=True
     )
-    
-    application.add_handler(CommandHandler("checkcats", check_categories_command))
+
 
 if __name__ == '__main__':
     main()

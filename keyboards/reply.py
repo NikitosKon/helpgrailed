@@ -2,9 +2,19 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from config import ADMIN_IDS, LANGUAGES, TOP_CURRENCIES, CRYPTO_CURRENCIES
 from database import db
 
-def get_text(key, **kwargs):
-    """Получить текст на русском"""
-    text = LANGUAGES['ru'].get(key, key)
+def get_text(key, user_id=None, **kwargs):
+    """Получить текст на языке пользователя"""
+    from database import db
+    
+    # Определяем язык пользователя
+    lang = 'ru'  # по умолчанию
+    if user_id:
+        user = db.get_user(user_id)
+        if user and user.get('language'):
+            lang = user.get('language')
+    
+    # Получаем текст
+    text = LANGUAGES[lang].get(key, key)
     return text.format(**kwargs) if kwargs else text
 
 def main_menu(user_id):

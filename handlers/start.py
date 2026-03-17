@@ -1,7 +1,7 @@
-from telegram import Update, ReplyKeyboardRemove
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from database import db
-from keyboards.reply import main_menu, get_text
+from config import LANGUAGES
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик /start"""
@@ -16,25 +16,60 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
     
-    # Регистрация пользователя
-    db.register_user(user.id, user.username, user.first_name, referrer_id)
-    db.update_activity(user.id)
+    # Проверяем, новый ли пользователь
+    existing_user = db.get_user(user.id)
     
-    # Приветствие
-    text = get_text('welcome', name=user.first_name)
-    
-    if update.callback_query:
-        await update.callback_query.edit_message_text(text, reply_markup=main_menu(user.id))
-    else:
-        # Отправляем меню
-        await update.message.reply_text(
-            text, 
-            reply_markup=main_menu(user.id)
-        )
+    if not existing_user:
+        # Новый пользователь - показываем выбор языка
+        text = "🌐 <b>Вітаємо! / Welcome! / Добро пожаловать!</b>\n\n"
+        text += "Оберіть мову:\nChoose language:\nВыберите язык:"
         
-        # Отправляем невидимое сообщение для удаления клавиатуры
-        await update.message.reply_chat_action("typing")  # Показывает "печатает"
-        await update.message.reply_text(
-            "⠀",  # Невидимый пробел
-            reply_markup=ReplyKeyboardRemove()
-        )
+        keyboard = [
+            [
+                InlineKeyboardButton("🇷🇺 Русский", callback_data='lang_ru'),
+                InlineKeyboardButton("🇬🇧 English", callback_data='lang_en')
+            ],
+            [InlineKeyboardButton("🇺🇦 Українська", callback_data='lang_uk')]
+        ]
+        
+        # Регистрируем пользователя с временным языком (потом обновится)
+        db.register_user(user.id, user.username, user.first_name, referrer_id)
+        
+        if update.callback_query:
+            await update.callback_query.edit_message_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='HTML'
+            )
+        else:
+            await update.message.reply_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='HTML'
+            )
+    else:
+        # Существующий пользователь - показываем главное меню
+        lang = existing_user.get('language', 'ru')
+        text = LANGUAGES[lang]['welcome'].format(name=user.first_name)
+        
+        from keyboards.reply import main_menu
+        
+        if update.callback_query:
+            await update.callback_query.edit_message_text(
+                text,
+                reply_markup=main_menu(user.id),
+                parse_mode='HTML'
+            )
+        else:
+            await update.message.reply_text(
+                text,
+                reply_markup=main_menu(user.id),
+                parse_mode='HTML'
+            )
+            
+            # Отправляем невидимое сообщение для удаления клавиатуры
+            await update.message.reply_chat_action("typing")
+            await update.message.reply_text(
+                "⠀",
+                reply_markup=ReplyKeyboardRemove()
+            )
