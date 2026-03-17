@@ -107,7 +107,6 @@ async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_username = (await context.bot.get_me()).username
     ref_link = f"https://t.me/{bot_username}?start=ref{user.id}"
     
-    # Получаем количество рефералов
     referrals_result = db.execute(
         "SELECT COUNT(*) as count FROM referrals WHERE referrer_id = ?", 
         (user.id,), 
@@ -121,7 +120,6 @@ async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         referrals_count = 0
     
-    # Получаем сумму заработка
     earned_result = db.execute(
         "SELECT SUM(bonus) as total FROM referrals WHERE referrer_id = ?", 
         (user.id,), 
@@ -135,16 +133,17 @@ async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         earned = 0
     
+    # Используем get_text для перевода
     text = (
-        f"🔗 <b>Реферальная программа</b>\n\n"
-        f"Приглашайте друзей и получайте <b>10%</b> от их первой покупки!\n\n"
-        f"📎 Ваша ссылка:\n<code>{ref_link}</code>\n\n"
-        f"👥 Приглашено: {referrals_count}\n"
-        f"💰 Заработано: ${earned:.2f}"
+        f"🔗 <b>{get_text('referral', user.id)}</b>\n\n"
+        f"{get_text('referral_description', user.id)}\n\n"
+        f"📎 {get_text('your_link', user.id)}:\n<code>{ref_link}</code>\n\n"
+        f"👥 {get_text('invited', user.id)}: {referrals_count}\n"
+        f"💰 {get_text('earned', user.id)}: ${earned:.2f}"
     )
     
     await query.edit_message_text(
         text,
-        reply_markup=back_button('menu'),
+        reply_markup=back_button('menu', user.id),
         parse_mode='HTML'
     )

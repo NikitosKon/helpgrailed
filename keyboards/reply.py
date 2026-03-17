@@ -10,7 +10,6 @@ def get_text(key, user_id=None, **kwargs):
         if user and user.get('language'):
             lang = user.get('language')
     
-    # Используем config.get_text() для получения текста на нужном языке
     from config import config
     return config.get_text(key, lang, **kwargs)
 
@@ -41,22 +40,24 @@ def cancel_button(user_id=None):
     return InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data='cancel_input')]])
 
 def categories_menu(user_id=None):
-    """Меню категорий из БД на языке пользователя"""
-    # Определяем язык пользователя
-    lang = 'ru'
-    if user_id:
-        user = db.get_user(user_id)
-        if user and user.get('language'):
-            lang = user.get('language')
-    
-    # Получаем категории на нужном языке
-    categories = db.get_categories(lang)
-    
-    keyboard = []
-    for cat_id, cat_name in categories.items():
-        keyboard.append([InlineKeyboardButton(cat_name, callback_data=f'cat_{cat_id}')])
-    keyboard.append([InlineKeyboardButton(get_text('back', user_id), callback_data='menu')])
-    return InlineKeyboardMarkup(keyboard)
+    """Меню категорий из БД"""
+    try:
+        categories = db.get_categories()
+        
+        keyboard = []
+        if categories:
+            for cat_id, cat_name in categories.items():
+                keyboard.append([InlineKeyboardButton(cat_name, callback_data=f'cat_{cat_id}')])
+        else:
+            keyboard.append([InlineKeyboardButton("❌ Категории не найдены", callback_data='menu')])
+        
+        keyboard.append([InlineKeyboardButton(get_text('back', user_id), callback_data='menu')])
+        return InlineKeyboardMarkup(keyboard)
+    except Exception as e:
+        print(f"ERROR in categories_menu: {e}")
+        return InlineKeyboardMarkup([[
+            InlineKeyboardButton("❌ Ошибка загрузки", callback_data='menu')
+        ]])
 
 def currency_menu(user_id=None):
     """Меню выбора валюты"""

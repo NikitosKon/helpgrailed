@@ -39,7 +39,7 @@ class Config:
         # Прокси для CryptoPay (если нужны)
         self.PROXY_LIST = []
         
-        # Языки
+        # Языки - ПОЛНАЯ ВЕРСИЯ СО ВСЕМИ КЛЮЧАМИ
         self.LANGUAGES = {
             'ru': {
                 'welcome': "👋 Привет, {name}!\nДобро пожаловать в @helpgrailed_bot",
@@ -53,11 +53,18 @@ class Config:
                 'withdraw': "💸 Вывести",
                 'buy': "✅ Купить за ${price:.2f}",
                 'choose_category': "📂 Выберите категорию:",
+                'choose_item': "Выберите товар:",
+                'in_stock': "в наличии",
                 'no_items': "😕 В этой категории пока нет товаров.",
                 'insufficient_funds': "❌ Недостаточно средств",
                 'purchase_success': "✅ Покупка успешно оформлена!",
                 'choose_language': "🌐 Выберите язык / Choose language / Оберіть мову:",
                 'language_changed': "✅ Язык изменен на русский",
+                'referral_description': "Приглашайте друзей и получайте 10% от их первой покупки!",
+                'your_link': "Ваша ссылка",
+                'invited': "Приглашено",
+                'earned': "Заработано",
+                'error': "Ошибка",
             },
             'en': {
                 'welcome': "👋 Hello, {name}!\nWelcome to @helpgrailed_bot",
@@ -71,11 +78,18 @@ class Config:
                 'withdraw': "💸 Withdraw",
                 'buy': "✅ Buy for ${price:.2f}",
                 'choose_category': "📂 Choose category:",
+                'choose_item': "Choose product:",
+                'in_stock': "in stock",
                 'no_items': "😕 No products in this category yet.",
                 'insufficient_funds': "❌ Insufficient funds",
                 'purchase_success': "✅ Purchase successful!",
                 'choose_language': "🌐 Choose language / Оберіть мову / Выберите язык:",
                 'language_changed': "✅ Language changed to English",
+                'referral_description': "Invite friends and get 10% from their first purchase!",
+                'your_link': "Your link",
+                'invited': "Invited",
+                'earned': "Earned",
+                'error': "Error",
             },
             'uk': {
                 'welcome': "👋 Привіт, {name}!\nЛаскаво просимо до @helpgrailed_bot",
@@ -89,11 +103,18 @@ class Config:
                 'withdraw': "💸 Вивести",
                 'buy': "✅ Купити за ${price:.2f}",
                 'choose_category': "📂 Виберіть категорію:",
+                'choose_item': "Виберіть товар:",
+                'in_stock': "в наявності",
                 'no_items': "😕 У цій категорії ще немає товарів.",
                 'insufficient_funds': "❌ Недостатньо коштів",
                 'purchase_success': "✅ Покупка успішна!",
                 'choose_language': "🌐 Оберіть мову / Choose language / Выберите язык:",
                 'language_changed': "✅ Мову змінено на українську",
+                'referral_description': "Запрошуйте друзів та отримуйте 10% від їхньої першої покупки!",
+                'your_link': "Ваше посилання",
+                'invited': "Запрошено",
+                'earned': "Зароблено",
+                'error': "Помилка",
             }
         }
         
@@ -145,14 +166,11 @@ class Config:
     
     def get_text(self, key: str, lang: str = 'ru', **kwargs) -> str:
         """Получить текст на нужном языке"""
-        # Проверяем, существует ли указанный язык
         if lang not in self.LANGUAGES:
             lang = 'ru'
         
-        # Получаем текст
         text = self.LANGUAGES[lang].get(key, key)
         
-        # Подставляем параметры, если есть
         if kwargs:
             try:
                 return text.format(**kwargs)

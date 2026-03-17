@@ -8,10 +8,7 @@ from typing import Optional, List, Dict, Any, Tuple
 import random
 import string
 
-# Импортируем переменные из config
-from config import (
-    DB_FILE, REFERRAL_BONUS, LANGUAGES
-)
+from config import DB_FILE, REFERRAL_BONUS
 
 logger = logging.getLogger(__name__)
 
@@ -19,19 +16,15 @@ class Database:
     """Класс для работы с базой данных (поддерживает SQLite и PostgreSQL)"""
     
     def __init__(self):
-        # Проверяем, используем ли мы PostgreSQL (на Render)
         self.use_postgres = 'DATABASE_URL' in os.environ
         
         if self.use_postgres:
             import psycopg2
             from psycopg2.extras import RealDictCursor
-            
-            # Подключаемся к PostgreSQL
             self.conn = psycopg2.connect(os.environ['DATABASE_URL'], cursor_factory=RealDictCursor)
             self.conn.autocommit = False
             logger.info("Connected to PostgreSQL database")
         else:
-            # Локально используем SQLite
             self.conn = sqlite3.connect(DB_FILE, check_same_thread=False)
             self.conn.row_factory = sqlite3.Row
             logger.info(f"Connected to SQLite database: {DB_FILE}")
@@ -41,11 +34,9 @@ class Database:
     
     def execute(self, query: str, params: tuple = (), 
                 fetch: bool = False, commit: bool = False) -> Optional[List[Any]]:
-        """Безопасное выполнение запроса (работает с SQLite и PostgreSQL)"""
         try:
             c = self.conn.cursor()
             
-            # Для PostgreSQL заменяем ? на %s
             if self.use_postgres:
                 query = query.replace('?', '%s')
                 
@@ -55,10 +46,7 @@ class Database:
                 self.conn.commit()
             
             if fetch:
-                if self.use_postgres:
-                    return c.fetchall()
-                else:
-                    return c.fetchall()
+                return c.fetchall()
             return None
             
         except Exception as e:
@@ -66,11 +54,9 @@ class Database:
             logger.error(f"Query: {query}")
             logger.error(f"Params: {params}")
             
-            # Для PostgreSQL делаем rollback при ошибке
             if self.use_postgres:
                 try:
                     self.conn.rollback()
-                    logger.info("Transaction rolled back")
                 except:
                     pass
             
@@ -79,12 +65,8 @@ class Database:
             raise
     
     def init_tables(self):
-        """Инициализация таблиц с поддержкой обоих движков"""
-        
         if self.use_postgres:
-            # PostgreSQL синтаксис
             queries = [
-                # Пользователи
                 """CREATE TABLE IF NOT EXISTS users (
                     user_id BIGINT PRIMARY KEY,
                     username TEXT,
@@ -98,8 +80,6 @@ class Database:
                     notify_enabled INTEGER DEFAULT 1,
                     admin_note TEXT
                 )""",
-                
-                # Транзакции
                 """CREATE TABLE IF NOT EXISTS transactions (
                     id SERIAL PRIMARY KEY,
                     user_id BIGINT,
@@ -115,8 +95,6 @@ class Database:
                     promo_code TEXT,
                     discount_amount REAL DEFAULT 0
                 )""",
-                
-                # Рефералы
                 """CREATE TABLE IF NOT EXISTS referrals (
                     id SERIAL PRIMARY KEY,
                     referrer_id BIGINT,
@@ -127,8 +105,6 @@ class Database:
                     total_earned REAL DEFAULT 0,
                     UNIQUE(referrer_id, referral_id)
                 )""",
-                
-                # Товары
                 """CREATE TABLE IF NOT EXISTS products (
                     id SERIAL PRIMARY KEY,
                     category TEXT NOT NULL,
@@ -143,16 +119,12 @@ class Database:
                     updated_at TEXT,
                     sold_count INTEGER DEFAULT 0
                 )""",
-                
-                # Ожидающие действия
                 """CREATE TABLE IF NOT EXISTS pending_actions (
                     user_id BIGINT PRIMARY KEY,
                     action TEXT,
                     data TEXT,
                     created_at TEXT
                 )""",
-                
-                # История покупок
                 """CREATE TABLE IF NOT EXISTS purchase_history (
                     id SERIAL PRIMARY KEY,
                     user_id BIGINT,
@@ -163,8 +135,6 @@ class Database:
                     purchase_date TEXT,
                     completed_date TEXT
                 )""",
-                
-                # Промокоды
                 """CREATE TABLE IF NOT EXISTS promo_codes (
                     id SERIAL PRIMARY KEY,
                     code TEXT UNIQUE,
@@ -180,8 +150,6 @@ class Database:
                     created_by BIGINT,
                     created_at TEXT
                 )""",
-                
-                # Вводы промокодов
                 """CREATE TABLE IF NOT EXISTS promo_entries (
                     id SERIAL PRIMARY KEY,
                     promo_id INTEGER,
@@ -193,23 +161,17 @@ class Database:
                     FOREIGN KEY (promo_id) REFERENCES promo_codes(id),
                     FOREIGN KEY (user_id) REFERENCES users(user_id)
                 )""",
-                
-                # Таблица категорий для PostgreSQL
                 """CREATE TABLE IF NOT EXISTS categories (
                     id SERIAL PRIMARY KEY,
                     cat_id TEXT UNIQUE NOT NULL,
-                    name_ru TEXT NOT NULL,
-                    name_uk TEXT NOT NULL,
-                    name_en TEXT NOT NULL,
+                    name TEXT NOT NULL,
                     sort_order INTEGER DEFAULT 0,
                     created_at TEXT,
                     updated_at TEXT
                 )""",
             ]
         else:
-            # SQLite синтаксис
             queries = [
-                # Пользователи
                 """CREATE TABLE IF NOT EXISTS users (
                     user_id INTEGER PRIMARY KEY,
                     username TEXT,
@@ -223,8 +185,6 @@ class Database:
                     notify_enabled INTEGER DEFAULT 1,
                     admin_note TEXT
                 )""",
-                
-                # Транзакции
                 """CREATE TABLE IF NOT EXISTS transactions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER,
@@ -240,8 +200,6 @@ class Database:
                     promo_code TEXT,
                     discount_amount REAL DEFAULT 0
                 )""",
-                
-                # Рефералы
                 """CREATE TABLE IF NOT EXISTS referrals (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     referrer_id INTEGER,
@@ -252,8 +210,6 @@ class Database:
                     total_earned REAL DEFAULT 0,
                     UNIQUE(referrer_id, referral_id)
                 )""",
-                
-                # Товары
                 """CREATE TABLE IF NOT EXISTS products (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     category TEXT NOT NULL,
@@ -268,16 +224,12 @@ class Database:
                     updated_at TEXT,
                     sold_count INTEGER DEFAULT 0
                 )""",
-                
-                # Ожидающие действия
                 """CREATE TABLE IF NOT EXISTS pending_actions (
                     user_id INTEGER PRIMARY KEY,
                     action TEXT,
                     data TEXT,
                     created_at TEXT
                 )""",
-                
-                # История покупок
                 """CREATE TABLE IF NOT EXISTS purchase_history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER,
@@ -289,8 +241,6 @@ class Database:
                     completed_date TEXT,
                     FOREIGN KEY (user_id) REFERENCES users(user_id)
                 )""",
-                
-                # Промокоды
                 """CREATE TABLE IF NOT EXISTS promo_codes (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     code TEXT UNIQUE,
@@ -306,8 +256,6 @@ class Database:
                     created_by INTEGER,
                     created_at TEXT
                 )""",
-                
-                # Вводы промокодов
                 """CREATE TABLE IF NOT EXISTS promo_entries (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     promo_id INTEGER,
@@ -319,14 +267,10 @@ class Database:
                     FOREIGN KEY (promo_id) REFERENCES promo_codes(id),
                     FOREIGN KEY (user_id) REFERENCES users(user_id)
                 )""",
-
-                # Таблица категорий для SQLite
                 """CREATE TABLE IF NOT EXISTS categories (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     cat_id TEXT UNIQUE NOT NULL,
-                    name_ru TEXT NOT NULL,
-                    name_uk TEXT NOT NULL,
-                    name_en TEXT NOT NULL,
+                    name TEXT NOT NULL,
                     sort_order INTEGER DEFAULT 0,
                     created_at TEXT,
                     updated_at TEXT
@@ -340,7 +284,6 @@ class Database:
                 logger.error(f"Error creating table: {e}")
     
     def seed_products(self):
-        """Заполнение тестовыми товарами"""
         examples = [
             ('grailed_accounts', 'Aged Grailed 2022–2023 (4.7+)', 95.0, 
              '✅ Возраст 3+ года\n✅ Рейтинг 4.7+\n✅ Есть отзывы', -1, 10),
@@ -373,10 +316,8 @@ class Database:
                     commit=True
                 )
     
-    # === КЭШИРОВАНИЕ ===
     @lru_cache(maxsize=128)
     def get_product_cached(self, product_id: int) -> Optional[dict]:
-        """Получить товар с кэшированием"""
         result = self.execute(
             "SELECT * FROM products WHERE id = ?", 
             (product_id,), 
@@ -387,12 +328,9 @@ class Database:
         return None
     
     def invalidate_product_cache(self, product_id: int):
-        """Инвалидация кэша товара"""
         self.get_product_cached.cache_clear()
     
-    # === ПОЛЬЗОВАТЕЛИ ===
     def get_user(self, user_id: int) -> Optional[dict]:
-        """Получить пользователя"""
         result = self.execute(
             "SELECT * FROM users WHERE user_id = ?", 
             (user_id,), 
@@ -404,17 +342,14 @@ class Database:
     
     def register_user(self, user_id: int, username: str, first_name: str, 
                      referrer_id: Optional[int] = None) -> bool:
-        """Регистрация пользователя"""
         if self.get_user(user_id):
             return False
         
         now = datetime.now().isoformat()
         
         try:
-            # Начинаем транзакцию
             self.execute("BEGIN TRANSACTION", commit=False)
             
-            # Добавляем пользователя
             self.execute(
                 """INSERT INTO users 
                    (user_id, username, first_name, referrer_id, registered_date, last_active) 
@@ -423,7 +358,6 @@ class Database:
                 commit=False
             )
             
-            # Если есть реферер, добавляем запись о реферале
             if referrer_id and referrer_id != user_id:
                 self.execute(
                     """INSERT INTO referrals 
@@ -444,16 +378,13 @@ class Database:
             return False
     
     def update_activity(self, user_id: int):
-        """Обновить время активности"""
         self.execute(
             "UPDATE users SET last_active = ? WHERE user_id = ?",
             (datetime.now().isoformat(), user_id),
             commit=True
         )
     
-    # === БАЛАНС ===
     def get_balance(self, user_id: int) -> float:
-        """Получить баланс пользователя"""
         result = self.execute(
             "SELECT balance FROM users WHERE user_id = ?", 
             (user_id,), 
@@ -467,7 +398,6 @@ class Database:
         return 0.0
     
     def add_balance(self, user_id: int, amount: float) -> bool:
-        """Добавить баланс"""
         try:
             self.execute(
                 "UPDATE users SET balance = balance + ? WHERE user_id = ?",
@@ -479,10 +409,8 @@ class Database:
             logger.error(f"Failed to add balance for {user_id}: {e}")
             return False
     
-    # === ТОВАРЫ ===
     def get_products(self, category: Optional[str] = None, 
                     show_all: bool = False) -> List[dict]:
-        """Получить список товаров"""
         if category:
             if show_all:
                 query = """SELECT * FROM products 
@@ -503,13 +431,11 @@ class Database:
         return [dict(row) for row in results] if results else []
     
     def get_product(self, product_id: int) -> Optional[dict]:
-        """Получить товар по ID"""
         return self.get_product_cached(product_id)
     
     def add_product(self, category: str, name: str, price: float, 
                    description: Optional[str] = None, stock: int = -1, 
                    sort_order: int = 0, photo_url: Optional[str] = None) -> bool:
-        """Добавить новый товар"""
         now = datetime.now().isoformat()
         try:
             self.execute(
@@ -519,7 +445,7 @@ class Database:
                 (category, name, price, description, stock, sort_order, photo_url, now, now),
                 commit=True
             )
-            self.invalidate_product_cache(-1)  # Инвалидируем кэш
+            self.invalidate_product_cache(-1)
             logger.info(f"Product added: {name}")
             return True
         except Exception as e:
@@ -527,7 +453,6 @@ class Database:
             return False
     
     def update_product(self, product_id: int, **kwargs) -> bool:
-        """Обновить товар"""
         allowed = ['category', 'name', 'price_usd', 'description', 
                   'stock', 'sort_order', 'is_active', 'photo_url']
         
@@ -558,7 +483,6 @@ class Database:
             return False
     
     def delete_product(self, product_id: int) -> bool:
-        """Удалить товар"""
         try:
             self.execute("DELETE FROM products WHERE id = ?", (product_id,), commit=True)
             self.invalidate_product_cache(product_id)
@@ -568,12 +492,11 @@ class Database:
             logger.error(f"Failed to delete product {product_id}: {e}")
             return False
     
-    # === КАТЕГОРИИ ===
-    def get_categories(self, lang='ru'):
-        """Получить все категории из БД на нужном языке"""
+    def get_categories(self) -> Dict[str, str]:
+        """Получить все категории из БД"""
         try:
             result = self.execute(
-                "SELECT cat_id, name_ru, name_uk, name_en FROM categories ORDER BY sort_order",
+                "SELECT cat_id, name FROM categories ORDER BY sort_order",
                 fetch=True
             )
             
@@ -581,95 +504,58 @@ class Database:
             if result:
                 for row in result:
                     if self.use_postgres:
-                        cat_id = row['cat_id']
-                        if lang == 'uk':
-                            name = row['name_uk']
-                        elif lang == 'en':
-                            name = row['name_en']
-                        else:
-                            name = row['name_ru']
+                        categories[row['cat_id']] = row['name']
                     else:
-                        cat_id = row[0]
-                        if lang == 'uk':
-                            name = row[2]  # name_uk
-                        elif lang == 'en':
-                            name = row[3]  # name_en
-                        else:
-                            name = row[1]  # name_ru
-                    categories[cat_id] = name
-            
-            # Если в БД нет категорий, загружаем дефолтные
-            if not categories:
-                default_cats = {
-                    'grailed_accounts': {'ru': "📱 Grailed account's", 'uk': "📱 Grailed акаунти", 'en': "📱 Grailed accounts"},
-                    'paypal': {'ru': "💳 PayPal", 'uk': "💳 PayPal", 'en': "💳 PayPal"},
-                    'call_service': {'ru': "📞 Прозвон сервис", 'uk': "📞 Прозвон сервіс", 'en': "📞 Call service"},
-                    'grailed_likes': {'ru': "❤️ Накрутка лайков", 'uk': "❤️ Накрутка лайків", 'en': "❤️ Grailed likes"},
-                    'ebay': {'ru': "🏷 eBay", 'uk': "🏷 eBay", 'en': "🏷 eBay"},
-                    'support': {'ru': "🆘 Тех поддержка", 'uk': "🆘 Тех підтримка", 'en': "🆘 Support"},
-                }
-                for cat_id, names in default_cats.items():
-                    self.add_category(cat_id, names['ru'], names['uk'], names['en'])
-                    categories[cat_id] = names[lang]
-            
-            return categories
+                        categories[row[0]] = row[1]
+                logger.info(f"Loaded {len(categories)} categories from DB")
+                return categories
+            else:
+                logger.warning("No categories found in database")
+                return {}
         except Exception as e:
             logger.error(f"Error getting categories: {e}")
             return {}
-
-    def add_category(self, cat_id, name_ru, name_uk, name_en, sort_order=0):
-        """Добавить категорию с тремя языками"""
+    
+    def add_category(self, cat_id: str, name: str, sort_order: int = 0) -> bool:
+        """Добавить категорию"""
         now = datetime.now().isoformat()
         try:
-            self.execute(
-                """INSERT INTO categories (cat_id, name_ru, name_uk, name_en, sort_order, created_at, updated_at) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (cat_id, name_ru, name_uk, name_en, sort_order, now, now),
-                commit=True
-            )
-            logger.info(f"Category added: {cat_id}")
+            if self.use_postgres:
+                query = """INSERT INTO categories (cat_id, name, sort_order, created_at, updated_at) 
+                           VALUES (%s, %s, %s, %s, %s)"""
+                params = (cat_id, name, sort_order, now, now)
+            else:
+                query = """INSERT INTO categories (cat_id, name, sort_order, created_at, updated_at) 
+                           VALUES (?, ?, ?, ?, ?)"""
+                params = (cat_id, name, sort_order, now, now)
+            
+            self.execute(query, params, commit=True)
+            logger.info(f"Category added: {cat_id} - {name}")
             return True
         except Exception as e:
-            logger.error(f"Failed to add category: {e}")
+            logger.error(f"Failed to add category {cat_id}: {e}")
             return False
-
-    def update_category(self, cat_id, name_ru=None, name_uk=None, name_en=None):
-        """Обновить названия категории на разных языках"""
+    
+    def update_category(self, cat_id: str, name: str) -> bool:
+        """Обновить название категории"""
         now = datetime.now().isoformat()
-        updates = []
-        values = []
-        
-        if name_ru is not None:
-            updates.append("name_ru = ?")
-            values.append(name_ru)
-        if name_uk is not None:
-            updates.append("name_uk = ?")
-            values.append(name_uk)
-        if name_en is not None:
-            updates.append("name_en = ?")
-            values.append(name_en)
-        
-        if not updates:
-            return False
-        
-        values.append(now)
-        values.append(cat_id)
-        updates.append("updated_at = ?")
-        
-        query = f"UPDATE categories SET {', '.join(updates)} WHERE cat_id = ?"
-        
         try:
-            self.execute(query, tuple(values), commit=True)
-            logger.info(f"Category updated: {cat_id}")
+            if self.use_postgres:
+                query = "UPDATE categories SET name = %s, updated_at = %s WHERE cat_id = %s"
+                params = (name, now, cat_id)
+            else:
+                query = "UPDATE categories SET name = ?, updated_at = ? WHERE cat_id = ?"
+                params = (name, now, cat_id)
+            
+            self.execute(query, params, commit=True)
+            logger.info(f"Category updated: {cat_id} - {name}")
             return True
         except Exception as e:
-            logger.error(f"Failed to update category: {e}")
+            logger.error(f"Failed to update category {cat_id}: {e}")
             return False
-
-    def delete_category(self, cat_id):
-        """Удалить категорию"""
+    
+    def delete_category(self, cat_id: str) -> Tuple[bool, str]:
         try:
-            # Проверяем, есть ли товары в этой категории
             products = self.execute(
                 "SELECT COUNT(*) as count FROM products WHERE category = ?",
                 (cat_id,),
@@ -696,13 +582,10 @@ class Database:
             logger.error(f"Failed to delete category: {e}")
             return False, str(e)
     
-    # === ПОКУПКИ ===
     def purchase(self, user_id: int, product_id: int) -> Tuple[bool, str, Optional[dict]]:
-        """Безопасная покупка с транзакцией"""
         try:
             self.execute("BEGIN TRANSACTION")
             
-            # Получаем товар
             product = self.execute(
                 "SELECT * FROM products WHERE id = ?", 
                 (product_id,), 
@@ -716,7 +599,6 @@ class Database:
             price = product['price_usd']
             stock = product['stock']
             
-            # Проверяем баланс
             user = self.execute(
                 "SELECT balance FROM users WHERE user_id = ?", 
                 (user_id,), 
@@ -730,18 +612,15 @@ class Database:
             if user_balance < price:
                 raise Exception("❌ Недостаточно средств")
             
-            # Проверяем наличие
             if stock == 0:
                 raise Exception("❌ Товар закончился")
             
-            # Списываем баланс
             self.execute(
                 "UPDATE users SET balance = balance - ? WHERE user_id = ?",
                 (price, user_id),
                 commit=False
             )
             
-            # Уменьшаем запас и увеличиваем счетчик продаж
             if stock > 0:
                 self.execute(
                     "UPDATE products SET stock = stock - 1, sold_count = sold_count + 1 WHERE id = ?",
@@ -755,7 +634,6 @@ class Database:
                     commit=False
                 )
             
-            # Записываем транзакцию
             now = datetime.now().isoformat()
             self.execute(
                 """INSERT INTO transactions 
@@ -765,10 +643,8 @@ class Database:
                 commit=False
             )
             
-            # Добавляем в историю покупок
             self.add_purchase_history(user_id, product_id, product['name'], price)
             
-            # Реферальный бонус
             referrer = self.execute(
                 "SELECT referrer_id FROM users WHERE user_id = ?", 
                 (user_id,), 
@@ -784,14 +660,12 @@ class Database:
                 if referrer_id:
                     bonus = price * REFERRAL_BONUS
                     
-                    # Начисляем бонус
                     self.execute(
                         "UPDATE users SET balance = balance + ? WHERE user_id = ?",
                         (bonus, referrer_id),
                         commit=False
                     )
                     
-                    # Обновляем статистику рефералов
                     self.execute(
                         """UPDATE referrals 
                            SET bonus = bonus + ?, purchase_count = purchase_count + 1, 
@@ -801,7 +675,6 @@ class Database:
                         commit=False
                     )
                     
-                    # Записываем реферальную транзакцию
                     self.execute(
                         """INSERT INTO transactions 
                            (user_id, amount, type, status, completed_at, currency, metadata) 
@@ -821,9 +694,7 @@ class Database:
             logger.error(f"Purchase failed: {e}")
             return False, str(e), None
     
-    # === ИСТОРИЯ ПОКУПОК ===
     def add_purchase_history(self, user_id, product_id, product_name, amount):
-        """Добавить запись в историю покупок"""
         now = datetime.now().isoformat()
         self.execute(
             """INSERT INTO purchase_history 
@@ -834,7 +705,6 @@ class Database:
         )
 
     def get_purchase_history(self, user_id, limit=10):
-        """Получить историю покупок пользователя"""
         results = self.execute(
             """SELECT * FROM purchase_history 
                WHERE user_id = ? 
@@ -846,7 +716,6 @@ class Database:
         return [dict(row) for row in results] if results else []
 
     def get_all_purchases(self, limit=50):
-        """Получить все покупки (для админа)"""
         results = self.execute(
             """SELECT ph.*, u.username, u.first_name 
                FROM purchase_history ph
@@ -858,11 +727,9 @@ class Database:
         )
         return [dict(row) for row in results] if results else []
 
-    # === РАСШИРЕННЫЕ ПРОМОКОДЫ ===
     def create_advanced_promo(self, code, bonus_type, bonus_value, target_type='all', 
                              target_id=0, max_entries=-1, max_uses=-1, 
                              expires_at=None, created_by=None):
-        """Создать расширенный промокод"""
         now = datetime.now().isoformat()
         try:
             self.execute(
@@ -879,25 +746,13 @@ class Database:
             logger.error(f"Failed to create promo code: {e}")
             return False
 
-    # === ГЕНЕРАЦИЯ ПРОМОКОДОВ ===
     def generate_random_code(self, length=8):
-        """Генерирует случайный код в формате XXXXXXXX-XXXXXXXX"""
-        import random
-        import string
-        
-        # Только заглавные буквы и цифры
         chars = string.ascii_uppercase + string.digits
-        
-        # Первая часть
         part1 = ''.join(random.choices(chars, k=length))
-        # Вторая часть
         part2 = ''.join(random.choices(chars, k=length))
-        
-        # Соединяем с дефисом
         return f"{part1}-{part2}"
 
     def validate_advanced_promo(self, code, user_id):
-        """Проверить расширенный промокод"""
         promo = self.execute(
             "SELECT * FROM promo_codes WHERE code = ? AND is_active = 1",
             (code,),
@@ -909,12 +764,10 @@ class Database:
         
         promo = dict(promo[0])
         
-        # Проверка срока действия
         if promo['expires_at']:
             if datetime.now().isoformat() > promo['expires_at']:
                 return False, "Срок действия промокода истек"
         
-        # Проверка лимита вводов
         entries_result = self.execute(
             "SELECT COUNT(*) as count FROM promo_entries WHERE promo_id = ?",
             (promo['id'],),
@@ -925,7 +778,6 @@ class Database:
         if promo['max_entries'] > 0 and entries >= promo['max_entries']:
             return False, "Лимит вводов промокода исчерпан"
         
-        # Проверка, не вводил ли пользователь уже
         user_entry = self.execute(
             "SELECT id FROM promo_entries WHERE promo_id = ? AND user_id = ?",
             (promo['id'], user_id),
@@ -938,7 +790,6 @@ class Database:
         return True, promo
 
     def record_promo_entry(self, promo_id, user_id):
-        """Записать ввод промокода пользователем"""
         now = datetime.now().isoformat()
         self.execute(
             "INSERT INTO promo_entries (promo_id, user_id, entered_at) VALUES (?, ?, ?)",
@@ -947,7 +798,6 @@ class Database:
         )
 
     def use_promo_entry(self, promo_id, user_id, transaction_id):
-        """Отметить использование промокода"""
         self.execute(
             """UPDATE promo_entries 
                SET used = 1, used_at = ?, transaction_id = ? 
@@ -957,10 +807,8 @@ class Database:
         )
 
     def get_promo_stats(self, promo_id):
-        """Получить статистику промокода"""
         stats = {}
         
-        # Общее количество вводов
         entries_result = self.execute(
             "SELECT COUNT(*) as count FROM promo_entries WHERE promo_id = ?",
             (promo_id,),
@@ -968,7 +816,6 @@ class Database:
         )
         stats['total_entries'] = entries_result[0]['count'] if self.use_postgres else entries_result[0][0]
         
-        # Количество использованных
         used_result = self.execute(
             "SELECT COUNT(*) as count FROM promo_entries WHERE promo_id = ? AND used = 1",
             (promo_id,),
@@ -976,7 +823,6 @@ class Database:
         )
         stats['used'] = used_result[0]['count'] if self.use_postgres else used_result[0][0]
         
-        # Список пользователей
         users = self.execute(
             """SELECT pe.*, u.username, u.first_name 
                FROM promo_entries pe
@@ -991,10 +837,8 @@ class Database:
         
         return stats
     
-    # === ПРОМОКОДЫ (СТАРЫЕ, ДЛЯ СОВМЕСТИМОСТИ) ===
     def create_promo_code(self, code, discount_type, discount_value, min_amount=0, 
                           max_uses=-1, expires_at=None, created_by=None):
-        """Создать новый промокод (старая версия)"""
         return self.create_advanced_promo(
             code=code,
             bonus_type=discount_type,
@@ -1008,7 +852,6 @@ class Database:
         )
 
     def get_promo_code(self, code):
-        """Получить информацию о промокоде"""
         result = self.execute(
             "SELECT * FROM promo_codes WHERE code = ? AND is_active = 1",
             (code.upper(),),
@@ -1017,7 +860,6 @@ class Database:
         return dict(result[0]) if result else None
 
     def validate_promo_code(self, code, user_id, amount):
-        """Проверить валидность промокода (старая версия)"""
         valid, result = self.validate_advanced_promo(code, user_id)
         if not valid:
             return False, result
@@ -1029,18 +871,16 @@ class Database:
         return True, promo
 
     def apply_promo_code(self, code, user_id, amount):
-        """Применить промокод к сумме"""
         valid, result = self.validate_promo_code(code, user_id, amount)
         if not valid:
             return False, result, amount
         
         promo = result
         
-        # Рассчитываем скидку
         discount = 0
         if promo['bonus_type'] in ['percent', 'discount']:
             discount = amount * (promo['bonus_value'] / 100)
-        else:  # fixed или balance
+        else:
             discount = min(promo['bonus_value'], amount)
         
         final_amount = amount - discount
@@ -1053,11 +893,9 @@ class Database:
         }
 
     def use_promo_code(self, promo_id, user_id, transaction_id):
-        """Отметить использование промокода"""
         return self.use_promo_entry(promo_id, user_id, transaction_id)
 
     def get_all_promo_codes(self):
-        """Получить все промокоды (для админа)"""
         results = self.execute(
             "SELECT * FROM promo_codes ORDER BY created_at DESC",
             fetch=True
@@ -1065,27 +903,22 @@ class Database:
         return [dict(row) for row in results] if results else []
 
     def deactivate_promo_code(self, promo_id):
-        """Деактивировать промокод"""
         self.execute(
             "UPDATE promo_codes SET is_active = 0 WHERE id = ?",
             (promo_id,),
             commit=True
         )
 
-    # === НАКРУТКА БАЛАНСА (АДМИНКА) ===
     def admin_add_balance(self, user_id, amount, reason=""):
-        """Админская накрутка баланса"""
         now = datetime.now().isoformat()
         self.execute("BEGIN TRANSACTION")
         try:
-            # Начисляем баланс
             self.execute(
                 "UPDATE users SET balance = balance + ? WHERE user_id = ?",
                 (amount, user_id),
                 commit=False
             )
             
-            # Записываем транзакцию
             self.execute(
                 """INSERT INTO transactions 
                    (user_id, amount, type, status, completed_at, currency, metadata) 
@@ -1103,12 +936,11 @@ class Database:
             return False
 
     def search_users(self, query):
-        """Поиск пользователей по ID или username"""
         if self.use_postgres:
             results = self.execute(
                 """SELECT user_id, username, first_name, balance 
                    FROM users 
-                   WHERE user_id::text LIKE ? OR username LIKE ? OR first_name LIKE ?
+                   WHERE user_id::text LIKE %s OR username LIKE %s OR first_name LIKE %s
                    LIMIT 20""",
                 (f'%{query}%', f'%{query}%', f'%{query}%'),
                 fetch=True
@@ -1124,12 +956,10 @@ class Database:
             )
         return [dict(row) for row in results] if results else []
     
-    # === ТРАНЗАКЦИИ ===
     def add_transaction(self, user_id: int, amount: float, type_: str, 
                        status: str, invoice_id: Optional[str] = None,
                        currency: Optional[str] = None, 
                        metadata: Optional[dict] = None) -> bool:
-        """Добавить транзакцию"""
         now = datetime.now().isoformat()
         metadata_json = json.dumps(metadata) if metadata else None
         
@@ -1147,7 +977,6 @@ class Database:
             return False
     
     def get_user_transactions(self, user_id: int, limit: int = 10) -> List[dict]:
-        """Получить транзакции пользователя"""
         results = self.execute(
             """SELECT * FROM transactions 
                WHERE user_id = ? 
@@ -1158,12 +987,9 @@ class Database:
         )
         return [dict(row) for row in results] if results else []
     
-    # === СТАТИСТИКА ===
     def get_stats(self) -> dict:
-        """Получить общую статистику"""
         stats = {}
         
-        # Пользователи
         users = self.execute(
             "SELECT COUNT(*) as count, SUM(balance) as total FROM users", 
             fetch=True
@@ -1175,7 +1001,6 @@ class Database:
             stats['total_users'] = users[0]
             stats['total_balance'] = users[1] or 0
         
-        # Пользователи сегодня
         today = datetime.now().date().isoformat()
         users_today_result = self.execute(
             "SELECT COUNT(*) as count FROM users WHERE DATE(registered_date) = ?",
@@ -1187,7 +1012,6 @@ class Database:
         else:
             stats['users_today'] = users_today_result[0] or 0
         
-        # Продажи
         sales = self.execute(
             "SELECT COUNT(*) as count, SUM(amount) as total FROM transactions WHERE type = 'purchase' AND status = 'completed'",
             fetch=True
@@ -1199,7 +1023,6 @@ class Database:
             stats['total_sales'] = sales[0] or 0
             stats['total_revenue'] = sales[1] or 0
         
-        # Продажи сегодня
         sales_today = self.execute(
             "SELECT COUNT(*) as count, SUM(amount) as total FROM transactions WHERE type = 'purchase' AND status = 'completed' AND DATE(completed_at) = ?",
             (today,),
@@ -1212,7 +1035,6 @@ class Database:
             stats['sales_today'] = sales_today[0] or 0
             stats['revenue_today'] = sales_today[1] or 0
         
-        # Товары
         products = self.execute(
             "SELECT COUNT(*) as count FROM products WHERE is_active = 1",
             fetch=True
@@ -1224,15 +1046,13 @@ class Database:
         
         return stats
     
-    # === ОЖИДАЮЩИЕ ДЕЙСТВИЯ ===
     def set_pending_action(self, user_id: int, action: str, data: Optional[str] = None):
-        """Установить ожидающее действие"""
         now = datetime.now().isoformat()
         if self.use_postgres:
             self.execute(
                 """INSERT INTO pending_actions (user_id, action, data, created_at) 
-                   VALUES (?, ?, ?, ?)
-                   ON CONFLICT (user_id) DO UPDATE SET action = ?, data = ?, created_at = ?""",
+                   VALUES (%s, %s, %s, %s)
+                   ON CONFLICT (user_id) DO UPDATE SET action = %s, data = %s, created_at = %s""",
                 (user_id, action, data, now, action, data, now),
                 commit=True
             )
@@ -1244,7 +1064,6 @@ class Database:
             )
     
     def get_pending_action(self, user_id: int) -> Optional[Tuple[str, Optional[str]]]:
-        """Получить ожидающее действие"""
         result = self.execute(
             "SELECT action, data FROM pending_actions WHERE user_id = ?",
             (user_id,),
@@ -1258,23 +1077,19 @@ class Database:
         return None
     
     def clear_pending_action(self, user_id: int):
-        """Очистить ожидающее действие"""
         self.execute(
             "DELETE FROM pending_actions WHERE user_id = ?",
             (user_id,),
             commit=True
         )
     
-    # === ЭКСПОРТ ===
     def export_users(self) -> List[tuple]:
-        """Экспорт пользователей для CSV"""
         return self.execute(
             "SELECT user_id, username, balance, registered_date, last_active FROM users",
             fetch=True
         ) or []
     
     def export_sales(self, days: int = 30) -> List[tuple]:
-        """Экспорт продаж за период"""
         from datetime import timedelta
         date_from = (datetime.now() - timedelta(days=days)).isoformat()
         
@@ -1291,9 +1106,7 @@ class Database:
         ) or []
     
     def close(self):
-        """Закрыть соединение с БД"""
         self.conn.close()
 
 
-# Создаем глобальный экземпляр
 db = Database()

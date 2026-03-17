@@ -1,7 +1,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from database import db
-from keyboards.reply import categories_menu, get_text, back_button
+from keyboards.reply import categories_menu, get_text
 from config import SUPPORT_CONTACT, ADMIN_IDS
 import logging
 
@@ -37,7 +37,6 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
         items = db.get_products(category)
         
         if not items:
-            # Получаем название категории из БД
             categories = db.get_categories()
             cat_name = categories.get(category, category)
             await query.edit_message_text(
@@ -46,7 +45,6 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
             )
             return
         
-        # Получаем название категории из БД
         categories = db.get_categories()
         cat_name = categories.get(category, category)
         text = f"{cat_name}\n\nВыберите товар:"
