@@ -566,53 +566,53 @@ class Database:
             return False
     
     # === КАТЕГОРИИ ===
-    def get_categories(self, lang='ru'):
-    """Получить все категории из БД на нужном языке"""
-    try:
-        result = self.execute(
-            "SELECT cat_id, name_ru, name_uk, name_en FROM categories ORDER BY sort_order",
-            fetch=True
-        )
-        
-        categories = {}
-        if result:
-            for row in result:
-                if self.use_postgres:
-                    cat_id = row['cat_id']
-                    if lang == 'uk':
-                        name = row['name_uk']
-                    elif lang == 'en':
-                        name = row['name_en']
+        def get_categories(self, lang='ru'):
+        """Получить все категории из БД на нужном языке"""
+        try:
+            result = self.execute(
+                "SELECT cat_id, name_ru, name_uk, name_en FROM categories ORDER BY sort_order",
+                fetch=True
+            )
+            
+            categories = {}
+            if result:
+                for row in result:
+                    if self.use_postgres:
+                        cat_id = row['cat_id']
+                        if lang == 'uk':
+                            name = row['name_uk']
+                        elif lang == 'en':
+                            name = row['name_en']
+                        else:
+                            name = row['name_ru']
                     else:
-                        name = row['name_ru']
-                else:
-                    cat_id = row[0]
-                    if lang == 'uk':
-                        name = row[2]  # name_uk
-                    elif lang == 'en':
-                        name = row[3]  # name_en
-                    else:
-                        name = row[1]  # name_ru
-                categories[cat_id] = name
-        
-        # Если в БД нет категорий, загружаем дефолтные
-        if not categories:
-            default_cats = {
-                'grailed_accounts': {'ru': "📱 Grailed account's", 'uk': "📱 Grailed акаунти", 'en': "📱 Grailed accounts"},
-                'paypal': {'ru': "💳 PayPal", 'uk': "💳 PayPal", 'en': "💳 PayPal"},
-                'call_service': {'ru': "📞 Прозвон сервис", 'uk': "📞 Прозвон сервіс", 'en': "📞 Call service"},
-                'grailed_likes': {'ru': "❤️ Накрутка лайков", 'uk': "❤️ Накрутка лайків", 'en': "❤️ Grailed likes"},
-                'ebay': {'ru': "🏷 eBay", 'uk': "🏷 eBay", 'en': "🏷 eBay"},
-                'support': {'ru': "🆘 Тех поддержка", 'uk': "🆘 Тех підтримка", 'en': "🆘 Support"},
-            }
-            for cat_id, names in default_cats.items():
-                self.add_category(cat_id, names['ru'], names['uk'], names['en'])
-                categories[cat_id] = names[lang]
-        
-        return categories
-    except Exception as e:
-        logger.error(f"Error getting categories: {e}")
-        return {}
+                        cat_id = row[0]
+                        if lang == 'uk':
+                            name = row[2]  # name_uk
+                        elif lang == 'en':
+                            name = row[3]  # name_en
+                        else:
+                            name = row[1]  # name_ru
+                    categories[cat_id] = name
+            
+            # Если в БД нет категорий, загружаем дефолтные
+            if not categories:
+                default_cats = {
+                    'grailed_accounts': {'ru': "📱 Grailed account's", 'uk': "📱 Grailed акаунти", 'en': "📱 Grailed accounts"},
+                    'paypal': {'ru': "💳 PayPal", 'uk': "💳 PayPal", 'en': "💳 PayPal"},
+                    'call_service': {'ru': "📞 Прозвон сервис", 'uk': "📞 Прозвон сервіс", 'en': "📞 Call service"},
+                    'grailed_likes': {'ru': "❤️ Накрутка лайков", 'uk': "❤️ Накрутка лайків", 'en': "❤️ Grailed likes"},
+                    'ebay': {'ru': "🏷 eBay", 'uk': "🏷 eBay", 'en': "🏷 eBay"},
+                    'support': {'ru': "🆘 Тех поддержка", 'uk': "🆘 Тех підтримка", 'en': "🆘 Support"},
+                }
+                for cat_id, names in default_cats.items():
+                    self.add_category(cat_id, names['ru'], names['uk'], names['en'])
+                    categories[cat_id] = names[lang]
+            
+            return categories
+        except Exception as e:
+            logger.error(f"Error getting categories: {e}")
+            return {}
 
 def add_category(self, cat_id, name_ru, name_uk, name_en, sort_order=0):
     """Добавить категорию с тремя языками"""
