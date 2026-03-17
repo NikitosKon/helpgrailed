@@ -194,16 +194,17 @@ class Database:
                     FOREIGN KEY (user_id) REFERENCES users(user_id)
                 )""",
                 
+                # Таблица категорий для PostgreSQL
                 """CREATE TABLE IF NOT EXISTS categories (
-    		   id SERIAL PRIMARY KEY,
-    		   cat_id TEXT UNIQUE NOT NULL,
-    		   name_ru TEXT NOT NULL,
-    		   name_uk TEXT NOT NULL,
-    		   name_en TEXT NOT NULL,
-    		   sort_order INTEGER DEFAULT 0,
-    		   created_at TEXT,
-    		   updated_at TEXT
-		)""",
+                    id SERIAL PRIMARY KEY,
+                    cat_id TEXT UNIQUE NOT NULL,
+                    name_ru TEXT NOT NULL,
+                    name_uk TEXT NOT NULL,
+                    name_en TEXT NOT NULL,
+                    sort_order INTEGER DEFAULT 0,
+                    created_at TEXT,
+                    updated_at TEXT
+                )""",
             ]
         else:
             # SQLite синтаксис
@@ -323,7 +324,9 @@ class Database:
                 """CREATE TABLE IF NOT EXISTS categories (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     cat_id TEXT UNIQUE NOT NULL,
-                    name TEXT NOT NULL,
+                    name_ru TEXT NOT NULL,
+                    name_uk TEXT NOT NULL,
+                    name_en TEXT NOT NULL,
                     sort_order INTEGER DEFAULT 0,
                     created_at TEXT,
                     updated_at TEXT
@@ -614,54 +617,84 @@ class Database:
             logger.error(f"Error getting categories: {e}")
             return {}
 
-def add_category(self, cat_id, name_ru, name_uk, name_en, sort_order=0):
-    """Добавить категорию с тремя языками"""
-    now = datetime.now().isoformat()
-    try:
-        self.execute(
-            """INSERT INTO categories (cat_id, name_ru, name_uk, name_en, sort_order, created_at, updated_at) 
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (cat_id, name_ru, name_uk, name_en, sort_order, now, now),
-            commit=True
-        )
-        logger.info(f"Category added: {cat_id}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to add category: {e}")
-        return False
+    def add_category(self, cat_id, name_ru, name_uk, name_en, sort_order=0):
+        """Добавить категорию с тремя языками"""
+        now = datetime.now().isoformat()
+        try:
+            self.execute(
+                """INSERT INTO categories (cat_id, name_ru, name_uk, name_en, sort_order, created_at, updated_at) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (cat_id, name_ru, name_uk, name_en, sort_order, now, now),
+                commit=True
+            )
+            logger.info(f"Category added: {cat_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add category: {e}")
+            return False
 
-def update_category(self, cat_id, name_ru=None, name_uk=None, name_en=None):
-    """Обновить названия категории на разных языках"""
-    now = datetime.now().isoformat()
-    updates = []
-    values = []
-    
-    if name_ru is not None:
-        updates.append("name_ru = ?")
-        values.append(name_ru)
-    if name_uk is not None:
-        updates.append("name_uk = ?")
-        values.append(name_uk)
-    if name_en is not None:
-        updates.append("name_en = ?")
-        values.append(name_en)
-    
-    if not updates:
-        return False
-    
-    values.append(now)
-    values.append(cat_id)
-    updates.append("updated_at = ?")
-    
-    query = f"UPDATE categories SET {', '.join(updates)} WHERE cat_id = ?"
-    
-    try:
-        self.execute(query, tuple(values), commit=True)
-        logger.info(f"Category updated: {cat_id}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to update category: {e}")
-        return False
+    def update_category(self, cat_id, name_ru=None, name_uk=None, name_en=None):
+        """Обновить названия категории на разных языках"""
+        now = datetime.now().isoformat()
+        updates = []
+        values = []
+        
+        if name_ru is not None:
+            updates.append("name_ru = ?")
+            values.append(name_ru)
+        if name_uk is not None:
+            updates.append("name_uk = ?")
+            values.append(name_uk)
+        if name_en is not None:
+            updates.append("name_en = ?")
+            values.append(name_en)
+        
+        if not updates:
+            return False
+        
+        values.append(now)
+        values.append(cat_id)
+        updates.append("updated_at = ?")
+        
+        query = f"UPDATE categories SET {', '.join(updates)} WHERE cat_id = ?"
+        
+        try:
+            self.execute(query, tuple(values), commit=True)
+            logger.info(f"Category updated: {cat_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update category: {e}")
+            return False
+
+    def delete_category(self, cat_id):
+        """Удалить категорию"""
+        try:
+            # Проверяем, есть ли товары в этой категории
+            products = self.execute(
+                "SELECT COUNT(*) as count FROM products WHERE category = ?",
+                (cat_id,),
+                fetch=True
+            )
+            
+            if products:
+                if self.use_postgres:
+                    count = products[0]['count']
+                else:
+                    count = products[0][0]
+                
+                if count > 0:
+                    return False, f"Нельзя удалить: в категории {count} товаров"
+            
+            self.execute(
+                "DELETE FROM categories WHERE cat_id = ?",
+                (cat_id,),
+                commit=True
+            )
+            logger.info(f"Category deleted: {cat_id}")
+            return True, "Категория удалена"
+        except Exception as e:
+            logger.error(f"Failed to delete category: {e}")
+            return False, str(e)
     
     # === ПОКУПКИ ===
     def purchase(self, user_id: int, product_id: int) -> Tuple[bool, str, Optional[dict]]:
