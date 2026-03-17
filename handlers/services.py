@@ -25,7 +25,7 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
     logger.info(f"Категория: {category}")
     
     if category == 'support':
-        text = get_text('support_text', user.id)  # Добавь этот ключ в LANGUAGES
+        text = "📞 Техническая поддержка\n\nСвяжитесь с нами:"
         keyboard = [
             [InlineKeyboardButton(SUPPORT_CONTACT, url=f"https://t.me/{SUPPORT_CONTACT.replace('@', '')}")],
             [InlineKeyboardButton(get_text('back', user.id), callback_data='services')]
@@ -37,19 +37,19 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
         items = db.get_products(category)
         
         if not items:
-            # Получаем название категории из БД на языке пользователя
-            categories = db.get_categories(user.id)
+            # Получаем название категории из БД
+            categories = db.get_categories()
             cat_name = categories.get(category, category)
             await query.edit_message_text(
-                f"😕 {get_text('no_items', user.id)}",
+                f"😕 В категории {cat_name} пока нет товаров.",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(get_text('back', user.id), callback_data='services')]])
             )
             return
         
-        # Получаем название категории из БД на языке пользователя
-        categories = db.get_categories(user.id)
+        # Получаем название категории из БД
+        categories = db.get_categories()
         cat_name = categories.get(category, category)
-        text = f"{cat_name}\n\n{get_text('choose_item', user.id)}"  # Добавь ключ 'choose_item'
+        text = f"{cat_name}\n\nВыберите товар:"
         keyboard = []
         
         for item in items:
@@ -65,7 +65,7 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
                 stock = item[5]
             
             stock_str = '∞' if stock < 0 else str(stock)
-            btn_text = f"{name} — ${price:.0f} ({get_text('in_stock', user.id)}: {stock_str})"
+            btn_text = f"{name} — ${price:.0f} (в наличии: {stock_str})"
             keyboard.append([InlineKeyboardButton(btn_text, callback_data=f'prod_{pid}')])
         
         keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data='services')])
@@ -74,7 +74,7 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
     except Exception as e:
         logger.error(f"Ошибка в категории {category}: {e}")
         await query.edit_message_text(
-            "❌ " + get_text('error', user.id),
+            "❌ Ошибка загрузки товаров",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(get_text('back', user.id), callback_data='services')]])
         )
 
@@ -107,13 +107,13 @@ async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
     text = (
         f"<b>{name}</b>\n\n"
         f"{desc}\n\n"
-        f"💰 {get_text('buy', user.id)}: <b>${price:.2f}</b>\n"
+        f"💰 Цена: <b>${price:.2f}</b>\n"
         f"📦 В наличии: {stock_str}\n"
-        f"💳 {get_text('balance', user.id, balance=balance)}"
+        f"💳 Ваш баланс: <b>${balance:.2f}</b>"
     )
     
     keyboard = [
-        [InlineKeyboardButton(get_text('buy', user.id, price=price), callback_data=f'buy_{product_id}')],
+        [InlineKeyboardButton(f"✅ Купить за ${price:.2f}", callback_data=f'buy_{product_id}')],
         [InlineKeyboardButton("◀️ Назад к категории", callback_data=f'cat_{cat}')],
         [InlineKeyboardButton("🏠 Главное меню", callback_data='menu')]
     ]
@@ -150,21 +150,21 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
             balance = db.get_balance(user.id)
             need = product_price - balance
             text = (
-                f"❌ {get_text('insufficient_funds', user.id)}\n\n"
+                f"❌ Недостаточно средств\n\n"
                 f"💰 Нужно: ${product_price:.2f}\n"
-                f"💳 {get_text('balance', user.id, balance=balance)}\n"
+                f"💳 Ваш баланс: ${balance:.2f}\n"
                 f"❌ Не хватает: ${need:.2f}"
             )
             keyboard = [
-                [InlineKeyboardButton(get_text('deposit', user.id), callback_data='deposit')],
-                [InlineKeyboardButton(get_text('back', user.id), callback_data=f'prod_{product_id}')]
+                [InlineKeyboardButton("💰 Пополнить", callback_data='deposit')],
+                [InlineKeyboardButton("◀️ Назад", callback_data=f'prod_{product_id}')]
             ]
         elif "закончился" in message:
             text = "❌ Товар закончился. Попробуйте другой товар."
-            keyboard = [InlineKeyboardButton(get_text('back', user.id), callback_data=f'cat_{product_category}')]
+            keyboard = [InlineKeyboardButton("◀️ Назад", callback_data=f'cat_{product_category}')]
         else:
             text = f"❌ Ошибка: {message}"
-            keyboard = [InlineKeyboardButton(get_text('back', user.id), callback_data='services')]
+            keyboard = [InlineKeyboardButton("◀️ Назад", callback_data='services')]
         
         await query.edit_message_text(
             text, 
@@ -188,13 +188,13 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
                 pass
         
         text = (
-            f"✅ <b>{get_text('purchase_success', user.id)}</b>\n\n"
+            f"✅ <b>Покупка успешно оформлена!</b>\n\n"
             f"📦 Товар: {product_name}\n"
             f"💰 Списано: ${product_price:.2f}\n\n"
             f"🔔 Напишите {SUPPORT_CONTACT} для получения услуги.\n"
             f"🆔 Ваш ID: <code>{user.id}</code>"
         )
-        keyboard = [[InlineKeyboardButton(get_text('main_menu', user.id), callback_data='menu')]]
+        keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data='menu')]]
         
         await query.edit_message_text(
             text, 

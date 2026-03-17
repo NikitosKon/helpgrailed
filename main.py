@@ -303,6 +303,7 @@ def main():
     application.add_handler(CommandHandler("admin", admin_command))
     application.add_handler(CommandHandler("fixcats", fix_categories_command))
     application.add_handler(CommandHandler("checkcats", check_categories_command))
+    application.add_handler(CommandHandler("migrate", migrate_command))
 
     # Регистрируем обработчики callback-запросов
     application.add_handler(CallbackQueryHandler(language_callback, pattern='^lang_'))
@@ -323,7 +324,7 @@ def main():
         allowed_updates=['message', 'callback_query'],
         drop_pending_updates=True
     )
-
+     
 
 if __name__ == '__main__':
     main()

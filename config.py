@@ -39,7 +39,7 @@ class Config:
         # Прокси для CryptoPay (если нужны)
         self.PROXY_LIST = []
         
-        # Языки с полным набором ключей
+        # Языки
         self.LANGUAGES = {
             'ru': {
                 'welcome': "👋 Привет, {name}!\nДобро пожаловать в @helpgrailed_bot",
@@ -53,17 +53,11 @@ class Config:
                 'withdraw': "💸 Вывести",
                 'buy': "✅ Купить за ${price:.2f}",
                 'choose_category': "📂 Выберите категорию:",
-                'choose_item': "Выберите товар:",
                 'no_items': "😕 В этой категории пока нет товаров.",
                 'insufficient_funds': "❌ Недостаточно средств",
                 'purchase_success': "✅ Покупка успешно оформлена!",
-                'choose_language': "🌐 Welcome! Choose your language\n\nОберіть мову / Choose language / Выберите язык:",
+                'choose_language': "🌐 Выберите язык / Choose language / Оберіть мову:",
                 'language_changed': "✅ Язык изменен на русский",
-                'support_text': "📞 Техническая поддержка\n\nСвяжитесь с нами:",
-                'in_stock': "в наличии",
-                'error': "❌ Ошибка загрузки товаров",
-                'home': "🏠 Главное меню",
-                'back_to_category': "◀️ Назад к категории",
             },
             'en': {
                 'welcome': "👋 Hello, {name}!\nWelcome to @helpgrailed_bot",
@@ -77,17 +71,11 @@ class Config:
                 'withdraw': "💸 Withdraw",
                 'buy': "✅ Buy for ${price:.2f}",
                 'choose_category': "📂 Choose category:",
-                'choose_item': "Choose item:",
                 'no_items': "😕 No products in this category yet.",
                 'insufficient_funds': "❌ Insufficient funds",
                 'purchase_success': "✅ Purchase successful!",
-                'choose_language': "🌐 Welcome! Choose your language\n\nОберіть мову / Choose language / Выберите язык:",
+                'choose_language': "🌐 Choose language / Оберіть мову / Выберите язык:",
                 'language_changed': "✅ Language changed to English",
-                'support_text': "📞 Technical support\n\nContact us:",
-                'in_stock': "in stock",
-                'error': "❌ Error loading products",
-                'home': "🏠 Main menu",
-                'back_to_category': "◀️ Back to category",
             },
             'uk': {
                 'welcome': "👋 Привіт, {name}!\nЛаскаво просимо до @helpgrailed_bot",
@@ -101,17 +89,11 @@ class Config:
                 'withdraw': "💸 Вивести",
                 'buy': "✅ Купити за ${price:.2f}",
                 'choose_category': "📂 Виберіть категорію:",
-                'choose_item': "Виберіть товар:",
                 'no_items': "😕 У цій категорії ще немає товарів.",
                 'insufficient_funds': "❌ Недостатньо коштів",
                 'purchase_success': "✅ Покупка успішна!",
-                'choose_language': "🌐 Welcome! Choose your language\n\nОберіть мову / Choose language / Выберите язык:",
+                'choose_language': "🌐 Оберіть мову / Choose language / Выберите язык:",
                 'language_changed': "✅ Мову змінено на українську",
-                'support_text': "📞 Технічна підтримка\n\nЗв'яжіться з нами:",
-                'in_stock': "в наявності",
-                'error': "❌ Помилка завантаження товарів",
-                'home': "🏠 Головне меню",
-                'back_to_category': "◀️ Назад до категорії",
             }
         }
         
@@ -138,8 +120,7 @@ class Config:
         """Геттер для категорий - всегда свежие из БД"""
         try:
             from database import db
-            # По умолчанию возвращаем на русском для обратной совместимости
-            return db.get_categories('ru')
+            return db.get_categories()
         except Exception as e:
             print(f"Error loading categories from DB: {e}")
             return {
