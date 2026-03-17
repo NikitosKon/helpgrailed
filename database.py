@@ -566,7 +566,7 @@ class Database:
             return False
     
     # === КАТЕГОРИИ ===
-        def get_categories(self, lang='ru'):
+    def get_categories(self, lang='ru'):
         """Получить все категории из БД на нужном языке"""
         try:
             result = self.execute(
