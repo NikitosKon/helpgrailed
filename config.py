@@ -40,63 +40,62 @@ class Config:
         self.PROXY_LIST = []
         
         # Языки
-        # Языки
-self.LANGUAGES = {
-    'ru': {
-        'welcome': "👋 Привет, {name}!\nДобро пожаловать в @helpgrailed_bot",
-        'main_menu': "🏠 Главное меню",
-        'services': "🛒 Услуги",
-        'profile': "👤 Профиль",
-        'referral': "🔗 Рефералка",
-        'back': "◀️ Назад",
-        'balance': "💰 Баланс: ${balance}",
-        'deposit': "💰 Пополнить",
-        'withdraw': "💸 Вывести",
-        'buy': "✅ Купить за ${price:.2f}",
-        'choose_category': "📂 Выберите категорию:",
-        'no_items': "😕 В этой категории пока нет товаров.",
-        'insufficient_funds': "❌ Недостаточно средств",
-        'purchase_success': "✅ Покупка успешно оформлена!",
-        'choose_language': "🌐 Выберите язык / Choose language / Оберіть мову:",
-        'language_changed': "✅ Язык изменен на русский",
-    },
-    'en': {
-        'welcome': "👋 Hello, {name}!\nWelcome to @helpgrailed_bot",
-        'main_menu': "🏠 Main menu",
-        'services': "🛒 Services",
-        'profile': "👤 Profile",
-        'referral': "🔗 Referral",
-        'back': "◀️ Back",
-        'balance': "💰 Balance: ${balance}",
-        'deposit': "💰 Deposit",
-        'withdraw': "💸 Withdraw",
-        'buy': "✅ Buy for ${price:.2f}",
-        'choose_category': "📂 Choose category:",
-        'no_items': "😕 No products in this category yet.",
-        'insufficient_funds': "❌ Insufficient funds",
-        'purchase_success': "✅ Purchase successful!",
-        'choose_language': "🌐 Choose language / Оберіть мову / Выберите язык:",
-        'language_changed': "✅ Language changed to English",
-    },
-    'uk': {
-        'welcome': "👋 Привіт, {name}!\nЛаскаво просимо до @helpgrailed_bot",
-        'main_menu': "🏠 Головне меню",
-        'services': "🛒 Послуги",
-        'profile': "👤 Профіль",
-        'referral': "🔗 Рефералка",
-        'back': "◀️ Назад",
-        'balance': "💰 Баланс: ${balance}",
-        'deposit': "💰 Поповнити",
-        'withdraw': "💸 Вивести",
-        'buy': "✅ Купити за ${price:.2f}",
-        'choose_category': "📂 Виберіть категорію:",
-        'no_items': "😕 У цій категорії ще немає товарів.",
-        'insufficient_funds': "❌ Недостатньо коштів",
-        'purchase_success': "✅ Покупка успішна!",
-        'choose_language': "🌐 Оберіть мову / Choose language / Выберите язык:",
-        'language_changed': "✅ Мову змінено на українську",
-    }
-}
+        self.LANGUAGES = {
+            'ru': {
+                'welcome': "👋 Привет, {name}!\nДобро пожаловать в @helpgrailed_bot",
+                'main_menu': "🏠 Главное меню",
+                'services': "🛒 Услуги",
+                'profile': "👤 Профиль",
+                'referral': "🔗 Рефералка",
+                'back': "◀️ Назад",
+                'balance': "💰 Баланс: ${balance}",
+                'deposit': "💰 Пополнить",
+                'withdraw': "💸 Вывести",
+                'buy': "✅ Купить за ${price:.2f}",
+                'choose_category': "📂 Выберите категорию:",
+                'no_items': "😕 В этой категории пока нет товаров.",
+                'insufficient_funds': "❌ Недостаточно средств",
+                'purchase_success': "✅ Покупка успешно оформлена!",
+                'choose_language': "🌐 Выберите язык / Choose language / Оберіть мову:",
+                'language_changed': "✅ Язык изменен на русский",
+            },
+            'en': {
+                'welcome': "👋 Hello, {name}!\nWelcome to @helpgrailed_bot",
+                'main_menu': "🏠 Main menu",
+                'services': "🛒 Services",
+                'profile': "👤 Profile",
+                'referral': "🔗 Referral",
+                'back': "◀️ Back",
+                'balance': "💰 Balance: ${balance}",
+                'deposit': "💰 Deposit",
+                'withdraw': "💸 Withdraw",
+                'buy': "✅ Buy for ${price:.2f}",
+                'choose_category': "📂 Choose category:",
+                'no_items': "😕 No products in this category yet.",
+                'insufficient_funds': "❌ Insufficient funds",
+                'purchase_success': "✅ Purchase successful!",
+                'choose_language': "🌐 Choose language / Оберіть мову / Выберите язык:",
+                'language_changed': "✅ Language changed to English",
+            },
+            'uk': {
+                'welcome': "👋 Привіт, {name}!\nЛаскаво просимо до @helpgrailed_bot",
+                'main_menu': "🏠 Головне меню",
+                'services': "🛒 Послуги",
+                'profile': "👤 Профіль",
+                'referral': "🔗 Рефералка",
+                'back': "◀️ Назад",
+                'balance': "💰 Баланс: ${balance}",
+                'deposit': "💰 Поповнити",
+                'withdraw': "💸 Вивести",
+                'buy': "✅ Купити за ${price:.2f}",
+                'choose_category': "📂 Виберіть категорію:",
+                'no_items': "😕 У цій категорії ще немає товарів.",
+                'insufficient_funds': "❌ Недостатньо коштів",
+                'purchase_success': "✅ Покупка успішна!",
+                'choose_language': "🌐 Оберіть мову / Choose language / Выберите язык:",
+                'language_changed': "✅ Мову змінено на українську",
+            }
+        }
         
         # Список поддерживаемых валют в CryptoPay
         self.CRYPTO_CURRENCIES = {
@@ -121,11 +120,9 @@ self.LANGUAGES = {
         """Геттер для категорий - всегда свежие из БД"""
         try:
             from database import db
-            # Возвращаем категории прямо из БД
             return db.get_categories()
         except Exception as e:
             print(f"Error loading categories from DB: {e}")
-            # Возвращаем дефолтные, если БД недоступна (например, при первом запуске)
             return {
                 'grailed_accounts': "📱 Grailed account's",
                 'paypal': "💳 PayPal",
@@ -165,8 +162,6 @@ DB_FILE = config.DB_FILE
 DATABASE_URL = config.DATABASE_URL
 REFERRAL_BONUS = config.REFERRAL_BONUS
 LANGUAGES = config.LANGUAGES
-# CATEGORIES = config.CATEGORIES  # НЕ РАСКОММЕНТИРУЙ!
 CRYPTO_CURRENCIES = config.CRYPTO_CURRENCIES
 TOP_CURRENCIES = config.TOP_CURRENCIES
 CHANNEL_URL = config.CHANNEL_URL
-# ВСЁ! ДАЛЬШЕ НИЧЕГО НЕ ДОБАВЛЯЙ!
