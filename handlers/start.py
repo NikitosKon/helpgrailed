@@ -5,7 +5,7 @@ from keyboards.reply import main_menu
 from config import LANGUAGES
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик /start - всегда показывает выбор языка"""
+    """Обработчик /start"""
     user = update.effective_user
     args = context.args
     
@@ -17,41 +17,66 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
     
-    # Проверяем, есть ли пользователь в БД
+    # Получаем пользователя из БД
     existing_user = db.get_user(user.id)
     
-    # Если пользователь НОВЫЙ - регистрируем
+    # Проверяем, откуда пришли (callback или новое сообщение)
+    is_callback = update.callback_query is not None
+    
+    # Если пользователь НОВЫЙ - регистрируем и показываем выбор языка
     if not existing_user:
         db.register_user(user.id, user.username, user.first_name, referrer_id)
+        
+        text = "🌐 <b>Welcome! Choose your language</b>\n\n"
+        text += "Оберіть мову / Choose language / Выберите язык:"
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("🇷🇺 Русский", callback_data='lang_ru'),
+                InlineKeyboardButton("🇬🇧 English", callback_data='lang_en')
+            ],
+            [InlineKeyboardButton("🇺🇦 Українська", callback_data='lang_uk')]
+        ]
+        
+        if is_callback:
+            await update.callback_query.edit_message_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='HTML'
+            )
+        else:
+            await update.message.reply_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='HTML'
+            )
+        return
     
-    # ВСЕГДА показываем выбор языка (и новым, и старым)
-    text = "🌐 <b>Welcome!</b>\n\n"
-    text += "Choose your language:"
+    # Если пользователь существует - показываем меню на его языке
+    lang = existing_user.get('language', 'ru')
+    text = LANGUAGES[lang]['welcome'].format(name=user.first_name)
     
-    keyboard = [
-        [
-            InlineKeyboardButton("🇷🇺 Русский", callback_data='lang_ru'),
-            InlineKeyboardButton("🇬🇧 English", callback_data='lang_en')
-        ],
-        [InlineKeyboardButton("🇺🇦 Українська", callback_data='lang_uk')]
-    ]
-    
-    if update.callback_query:
+    if is_callback:
+        # Это callback (кнопка "Назад" или "Меню")
         await update.callback_query.edit_message_text(
             text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
+            reply_markup=main_menu(user.id),
             parse_mode='HTML'
         )
     else:
+        # Это новая команда /start
         await update.message.reply_text(
             text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
+            reply_markup=main_menu(user.id),
             parse_mode='HTML'
         )
         
         # Отправляем невидимое сообщение для удаления клавиатуры
-        await update.message.reply_chat_action("typing")
-        await update.message.reply_text(
-            "⠀",
-            reply_markup=ReplyKeyboardRemove()
-        )
+        try:
+            await update.message.reply_chat_action("typing")
+            await update.message.reply_text(
+                "⠀",
+                reply_markup=ReplyKeyboardRemove()
+            )
+        except:
+            pass
