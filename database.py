@@ -162,15 +162,15 @@ class Database:
                     FOREIGN KEY (user_id) REFERENCES users(user_id)
                 )""",
                 """CREATE TABLE IF NOT EXISTS categories (
-    		    id SERIAL PRIMARY KEY,
-    	            cat_id TEXT UNIQUE NOT NULL,
-    		    name_ru TEXT NOT NULL,
-    		    name_uk TEXT,
-   	            name_en TEXT,
-   		    sort_order INTEGER DEFAULT 0,
-    	            created_at TEXT,
-    		    updated_at TEXT
-		)""",
+                    id SERIAL PRIMARY KEY,
+                    cat_id TEXT UNIQUE NOT NULL,
+                    name_ru TEXT NOT NULL,
+                    name_uk TEXT,
+                    name_en TEXT,
+                    sort_order INTEGER DEFAULT 0,
+                    created_at TEXT,
+                    updated_at TEXT
+                )""",
             ]
         else:
             queries = [
@@ -272,7 +272,9 @@ class Database:
                 """CREATE TABLE IF NOT EXISTS categories (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     cat_id TEXT UNIQUE NOT NULL,
-                    name TEXT NOT NULL,
+                    name_ru TEXT NOT NULL,
+                    name_uk TEXT,
+                    name_en TEXT,
                     sort_order INTEGER DEFAULT 0,
                     created_at TEXT,
                     updated_at TEXT
@@ -494,7 +496,7 @@ class Database:
             logger.error(f"Failed to delete product {product_id}: {e}")
             return False
     
-        def get_categories(self, lang='ru') -> Dict[str, str]:
+    def get_categories(self, lang='ru') -> Dict[str, str]:
         """Получить все категории из БД на нужном языке"""
         try:
             result = self.execute(
@@ -588,7 +590,7 @@ class Database:
         except Exception as e:
             logger.error(f"Failed to update category {cat_id}: {e}")
             return False
-
+    
     def delete_category(self, cat_id: str) -> Tuple[bool, str]:
         try:
             products = self.execute(
