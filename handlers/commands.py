@@ -209,18 +209,19 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def fix_categories_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Фикс категорий - добавляет все категории с поддержкой трёх языков (только для админов)"""
+    """Фикс категорий с переводами (только для админов)"""
     user = update.effective_user
     
     if user.id not in ADMIN_IDS:
         await update.message.reply_text("⛔ Эта команда только для админов")
         return
     
+    # Категории с переводами на все языки
     default_categories = {
         'grailed_accounts': {
             'ru': "📱 Grailed account's",
-            'uk': "📱 Grailed акаунти",
-            'en': "📱 Grailed accounts"
+            'uk': "📱 Grailed account's",
+            'en': "📱 Grailed account's"
         },
         'paypal': {
             'ru': "💳 PayPal",
@@ -233,8 +234,8 @@ async def fix_categories_command(update: Update, context: ContextTypes.DEFAULT_T
             'en': "📞 Call service"
         },
         'grailed_likes': {
-            'ru': "❤️ Накрутка лайков",
-            'uk': "❤️ Накрутка лайків",
+            'ru': "❤️ Накрутка лайков на Grailed",
+            'uk': "❤️ Накрутка лайків на Grailed",
             'en': "❤️ Grailed likes"
         },
         'ebay': {
@@ -249,7 +250,7 @@ async def fix_categories_command(update: Update, context: ContextTypes.DEFAULT_T
         },
     }
     
-    await update.message.reply_text("🔄 <b>Добавляю категории...</b>", parse_mode='HTML')
+    await update.message.reply_text("🔄 <b>Добавляю категории с переводами...</b>", parse_mode='HTML')
     
     text = "📊 <b>Результат:</b>\n\n"
     
@@ -258,17 +259,26 @@ async def fix_categories_command(update: Update, context: ContextTypes.DEFAULT_T
             # Проверяем, есть ли уже
             existing = db.get_categories()
             if cat_id in existing:
-                # Обновляем существующую
+                # Обновляем существующую с переводами
                 db.update_category(cat_id, names['ru'], names['uk'], names['en'])
-                text += f"🔄 {names['ru']} - обновлено\n"
+                text += f"🔄 {names['ru']} - обновлено с переводами\n"
             else:
-                # Добавляем новую
+                # Добавляем новую с переводами
                 db.add_category(cat_id, names['ru'], names['uk'], names['en'])
-                text += f"✅ {names['ru']} - добавлено\n"
+                text += f"✅ {names['ru']} - добавлено с переводами\n"
         except Exception as e:
-            text += f"❌ {names['ru']} - ошибка: {str(e)}\n"
+            text += f"❌ {names['ru']} - ошибка: {e}\n"
     
+    # Проверяем, что получилось
     await update.message.reply_text(text, parse_mode='HTML')
+    
+    # Показывам итог
+    categories = db.get_categories()
+    if categories:
+        result = "✅ <b>Итог:</b>\n\n"
+        for cat_id, cat_name in categories.items():
+            result += f"• {cat_id}: {cat_name}\n"
+        await update.message.reply_text(result, parse_mode='HTML')
 
 async def check_categories_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Проверка категорий в БД (только для админов)"""
