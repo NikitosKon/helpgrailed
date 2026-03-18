@@ -533,24 +533,24 @@ class Database:
             return {}
 
     def add_category(self, cat_id: str, name_ru: str, name_uk: str = None, name_en: str = None, sort_order: int = 0) -> bool:
-        """Добавить категорию с переводами"""
-        now = datetime.now().isoformat()
-        try:
-            if self.use_postgres:
-                query = """INSERT INTO categories (cat_id, name_ru, name_uk, name_en, sort_order, created_at, updated_at) 
-                           VALUES (%s, %s, %s, %s, %s, %s, %s)"""
-                params = (cat_id, name_ru, name_uk, name_en, sort_order, now, now)
-            else:
-                query = """INSERT INTO categories (cat_id, name_ru, name_uk, name_en, sort_order, created_at, updated_at) 
-                           VALUES (?, ?, ?, ?, ?, ?, ?)"""
-                params = (cat_id, name_ru, name_uk, name_en, sort_order, now, now)
-            
-            self.execute(query, params, commit=True)
-            logger.info(f"Category added: {cat_id}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to add category {cat_id}: {e}")
-            return False
+    """Добавить категорию с переводами"""
+    now = datetime.now().isoformat()
+    try:
+        if self.use_postgres:
+            query = """INSERT INTO categories (cat_id, name_ru, name_uk, name_en, sort_order, created_at, updated_at) 
+                       VALUES (%s, %s, %s, %s, %s, %s, %s)"""
+            params = (cat_id, name_ru, name_uk, name_en, sort_order, now, now)
+        else:
+            query = """INSERT INTO categories (cat_id, name_ru, name_uk, name_en, sort_order, created_at, updated_at) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?)"""
+            params = (cat_id, name_ru, name_uk, name_en, sort_order, now, now)
+        
+        self.execute(query, params, commit=True)
+        logger.info(f"Category added successfully: {cat_id} - {name_ru}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to add category {cat_id}: {e}")
+        return False
 
     def update_category(self, cat_id: str, name_ru: str = None, name_uk: str = None, name_en: str = None) -> bool:
         """Обновить переводы категории"""

@@ -327,3 +327,45 @@ async def check_categories_command(update: Update, context: ContextTypes.DEFAULT
         text += "❌ Пусто!\n"
     
     await update.message.reply_text(text, parse_mode='HTML')
+
+async def force_add_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Принудительное добавление категорий напрямую в БД"""
+    user = update.effective_user
+    
+    if user.id not in ADMIN_IDS:
+        return
+    
+    categories = [
+        ('grailed_accounts', "📱 Grailed account's", "📱 Grailed account's", "📱 Grailed account's"),
+        ('paypal', "💳 PayPal", "💳 PayPal", "💳 PayPal"),
+        ('call_service', "📞 Прозвон сервис", "📞 Прозвон сервіс", "📞 Call service"),
+        ('grailed_likes', "❤️ Накрутка лайков на Grailed", "❤️ Накрутка лайків на Grailed", "❤️ Grailed likes"),
+        ('ebay', "🏷 eBay", "🏷 eBay", "🏷 eBay"),
+        ('support', "🆘 Тех поддержка", "🆘 Тех підтримка", "🆘 Support"),
+    ]
+    
+    text = "🔧 <b>Принудительное добавление категорий:</b>\n\n"
+    
+    for cat_id, ru, uk, en in categories:
+        try:
+            if db.use_postgres:
+                # Прямой SQL запрос для PostgreSQL
+                query = """INSERT INTO categories (cat_id, name_ru, name_uk, name_en, sort_order, created_at, updated_at) 
+                           VALUES (%s, %s, %s, %s, %s, %s, %s)
+                           ON CONFLICT (cat_id) DO UPDATE SET 
+                           name_ru = EXCLUDED.name_ru,
+                           name_uk = EXCLUDED.name_uk,
+                           name_en = EXCLUDED.name_en,
+                           updated_at = EXCLUDED.updated_at"""
+                params = (cat_id, ru, uk, en, 0, datetime.now().isoformat(), datetime.now().isoformat())
+            else:
+                query = """INSERT OR REPLACE INTO categories (cat_id, name_ru, name_uk, name_en, sort_order, created_at, updated_at) 
+                           VALUES (?, ?, ?, ?, ?, ?, ?)"""
+                params = (cat_id, ru, uk, en, 0, datetime.now().isoformat(), datetime.now().isoformat())
+            
+            db.execute(query, params, commit=True)
+            text += f"✅ {ru} - добавлено\n"
+        except Exception as e:
+            text += f"❌ {ru} - ошибка: {e}\n"
+    
+    await update.message.reply_text(text, parse_mode='HTML')
