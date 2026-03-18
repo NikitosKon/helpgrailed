@@ -494,7 +494,7 @@ class Database:
             logger.error(f"Failed to delete product {product_id}: {e}")
             return False
     
-    def get_categories(self, lang='ru') -> Dict[str, str]:
+        def get_categories(self, lang='ru') -> Dict[str, str]:
         """Получить все категории из БД на нужном языке"""
         try:
             result = self.execute(
@@ -532,7 +532,7 @@ class Database:
             logger.error(f"Error getting categories: {e}")
             return {}
 
-        def add_category(self, cat_id: str, name_ru: str, name_uk: str = None, name_en: str = None, sort_order: int = 0) -> bool:
+    def add_category(self, cat_id: str, name_ru: str, name_uk: str = None, name_en: str = None, sort_order: int = 0) -> bool:
         """Добавить категорию с переводами"""
         now = datetime.now().isoformat()
         try:
@@ -576,7 +576,6 @@ class Database:
         params.append(cat_id)
         
         if self.use_postgres:
-            # Для PostgreSQL заменяем ? на %s
             pg_updates = [u.replace('?', '%s') for u in updates]
             query = f"UPDATE categories SET {', '.join(pg_updates)} WHERE cat_id = %s"
         else:
@@ -589,7 +588,7 @@ class Database:
         except Exception as e:
             logger.error(f"Failed to update category {cat_id}: {e}")
             return False
-    
+
     def delete_category(self, cat_id: str) -> Tuple[bool, str]:
         try:
             products = self.execute(
