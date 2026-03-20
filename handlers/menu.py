@@ -2,7 +2,7 @@ from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from database import Database
+from database import db
 from handlers.start import start_command
 from handlers.services import handle_services, handle_category, handle_product, handle_buy
 from handlers.payments import (
@@ -19,7 +19,6 @@ from handlers.admin import (
 import logging
 
 logger = logging.getLogger(__name__)
-db = Database()
 
 # Anti-flood: минимальный интервал между действиями одного пользователя (в секундах)
 ANTI_FLOOD_INTERVAL = 0.6

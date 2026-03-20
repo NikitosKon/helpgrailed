@@ -1,6 +1,6 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from database import Database
+from database import db
 from keyboards.reply import deposit_menu, currency_menu, amount_menu, get_text, back_button, cancel_button
 from crypto import create_crypto_invoice
 from config import ADMIN_CONTACT, CRYPTO_CURRENCIES
@@ -9,7 +9,6 @@ from datetime import datetime
 import json  # Добавлен импорт
 
 logger = logging.getLogger(__name__)
-db = Database()
 
 async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать баланс"""

@@ -9,10 +9,9 @@ from telegram.ext import ContextTypes
 
 from config import ADMIN_IDS
 from config import config
-from database import Database
+from database import db
 
 logger = logging.getLogger(__name__)
-db = Database()
 
 
 async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data: str):
