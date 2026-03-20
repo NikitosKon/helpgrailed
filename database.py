@@ -43,7 +43,6 @@ class Database:
         self.ensure_schema_compat()
         self.seed_default_categories()
         self.seed_products()
-        self.backfill_product_i18n()
     
     def execute(self, query: str, params: tuple = (), 
                 fetch: bool = False, commit: bool = False) -> Optional[List[Any]]:
