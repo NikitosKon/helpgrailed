@@ -9,6 +9,7 @@ import random
 import string
 
 from config import DB_FILE, REFERRAL_BONUS
+from utils.translator import build_i18n_triplet
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ class Database:
         self.ensure_schema_compat()
         self.seed_default_categories()
         self.seed_products()
+        self.backfill_product_i18n()
     
     def execute(self, query: str, params: tuple = (), 
                 fetch: bool = False, commit: bool = False) -> Optional[List[Any]]:
@@ -120,8 +122,14 @@ class Database:
                     id SERIAL PRIMARY KEY,
                     category TEXT NOT NULL,
                     name TEXT NOT NULL,
+                    name_ru TEXT,
+                    name_uk TEXT,
+                    name_en TEXT,
                     price_usd REAL NOT NULL,
                     description TEXT,
+                    description_ru TEXT,
+                    description_uk TEXT,
+                    description_en TEXT,
                     stock INTEGER DEFAULT -1,
                     is_active INTEGER DEFAULT 1,
                     sort_order INTEGER DEFAULT 0,
@@ -228,8 +236,14 @@ class Database:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     category TEXT NOT NULL,
                     name TEXT NOT NULL,
+                    name_ru TEXT,
+                    name_uk TEXT,
+                    name_en TEXT,
                     price_usd REAL NOT NULL,
                     description TEXT,
+                    description_ru TEXT,
+                    description_uk TEXT,
+                    description_en TEXT,
                     stock INTEGER DEFAULT -1,
                     is_active INTEGER DEFAULT 1,
                     sort_order INTEGER DEFAULT 0,
@@ -308,11 +322,31 @@ class Database:
                     "ALTER TABLE categories ADD COLUMN IF NOT EXISTS photo_url TEXT",
                     commit=True
                 )
+                self.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS name_ru TEXT", commit=True)
+                self.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS name_uk TEXT", commit=True)
+                self.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS name_en TEXT", commit=True)
+                self.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS description_ru TEXT", commit=True)
+                self.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS description_uk TEXT", commit=True)
+                self.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS description_en TEXT", commit=True)
             else:
                 cols = self.execute("PRAGMA table_info(categories)", fetch=True) or []
                 col_names = {row[1] for row in cols}
                 if 'photo_url' not in col_names:
                     self.execute("ALTER TABLE categories ADD COLUMN photo_url TEXT", commit=True)
+
+                prod_cols = self.execute("PRAGMA table_info(products)", fetch=True) or []
+                prod_col_names = {row[1] for row in prod_cols}
+                missing = [
+                    ("name_ru", "TEXT"),
+                    ("name_uk", "TEXT"),
+                    ("name_en", "TEXT"),
+                    ("description_ru", "TEXT"),
+                    ("description_uk", "TEXT"),
+                    ("description_en", "TEXT"),
+                ]
+                for col_name, col_type in missing:
+                    if col_name not in prod_col_names:
+                        self.execute(f"ALTER TABLE products ADD COLUMN {col_name} {col_type}", commit=True)
         except Exception as e:
             logger.warning(f"Schema compatibility migration skipped: {e}")
 
@@ -366,13 +400,60 @@ class Database:
             
             if not existing:
                 now = datetime.now().isoformat()
+                name_i18n = build_i18n_triplet(name, source_lang='ru')
+                desc_i18n = build_i18n_triplet(desc, source_lang='ru')
                 self.execute(
                     """INSERT INTO products 
-                       (category, name, price_usd, description, stock, sort_order, created_at, updated_at) 
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (cat, name, price, desc, stock, order, now, now),
+                       (category, name, name_ru, name_uk, name_en, price_usd, description, description_ru, description_uk, description_en, stock, sort_order, created_at, updated_at) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        cat, name, name_i18n['ru'], name_i18n['uk'], name_i18n['en'],
+                        price, desc, desc_i18n['ru'], desc_i18n['uk'], desc_i18n['en'],
+                        stock, order, now, now
+                    ),
                     commit=True
                 )
+
+    def backfill_product_i18n(self):
+        """Заполнить отсутствующие переводы у старых товаров."""
+        try:
+            rows = self.execute(
+                """SELECT id, name, description, name_ru, name_uk, name_en, description_ru, description_uk, description_en
+                   FROM products""",
+                fetch=True
+            ) or []
+            for row in rows:
+                r = dict(row) if isinstance(row, dict) else {
+                    'id': row[0], 'name': row[1], 'description': row[2],
+                    'name_ru': row[3], 'name_uk': row[4], 'name_en': row[5],
+                    'description_ru': row[6], 'description_uk': row[7], 'description_en': row[8],
+                }
+                if r.get('name_ru') and r.get('name_uk') and r.get('name_en') and (r.get('description') is None or (r.get('description_ru') and r.get('description_uk') and r.get('description_en'))):
+                    continue
+
+                name_i18n = build_i18n_triplet(r.get('name'), source_lang='ru')
+                desc_i18n = build_i18n_triplet(r.get('description'), source_lang='ru') if r.get('description') else {'ru': None, 'uk': None, 'en': None}
+
+                self.execute(
+                    """UPDATE products
+                       SET name_ru = ?, name_uk = ?, name_en = ?,
+                           description_ru = ?, description_uk = ?, description_en = ?,
+                           updated_at = ?
+                       WHERE id = ?""",
+                    (
+                        r.get('name_ru') or name_i18n['ru'],
+                        r.get('name_uk') or name_i18n['uk'],
+                        r.get('name_en') or name_i18n['en'],
+                        r.get('description_ru') if r.get('description_ru') is not None else desc_i18n['ru'],
+                        r.get('description_uk') if r.get('description_uk') is not None else desc_i18n['uk'],
+                        r.get('description_en') if r.get('description_en') is not None else desc_i18n['en'],
+                        datetime.now().isoformat(),
+                        r['id']
+                    ),
+                    commit=True
+                )
+        except Exception as e:
+            logger.warning(f"Could not backfill product i18n: {e}")
     
     @lru_cache(maxsize=128)
     def get_product_cached(self, product_id: int) -> Optional[dict]:
@@ -468,7 +549,7 @@ class Database:
             return False
     
     def get_products(self, category: Optional[str] = None, 
-                    show_all: bool = False) -> List[dict]:
+                    show_all: bool = False, lang: str = 'ru') -> List[dict]:
         if category:
             if show_all:
                 query = """SELECT * FROM products 
@@ -486,21 +567,48 @@ class Database:
                 query = "SELECT * FROM products WHERE is_active = 1 ORDER BY category, sort_order, name"
             results = self.execute(query, fetch=True)
         
-        return [dict(row) for row in results] if results else []
+        products = [dict(row) for row in results] if results else []
+        return [self._localize_product_row(p, lang) for p in products]
     
-    def get_product(self, product_id: int) -> Optional[dict]:
-        return self.get_product_cached(product_id)
+    def get_product(self, product_id: int, lang: str = 'ru') -> Optional[dict]:
+        prod = self.get_product_cached(product_id)
+        if not prod:
+            return None
+        return self._localize_product_row(dict(prod), lang)
+
+    def _localize_product_row(self, row: dict, lang: str) -> dict:
+        """Return product row with language-specific name/description projected to generic fields."""
+        if lang not in {'ru', 'uk', 'en'}:
+            lang = 'ru'
+
+        name_key = f'name_{lang}'
+        desc_key = f'description_{lang}'
+
+        localized_name = row.get(name_key)
+        localized_desc = row.get(desc_key)
+        if localized_name:
+            row['name'] = localized_name
+        if localized_desc is not None and localized_desc != '':
+            row['description'] = localized_desc
+        return row
     
     def add_product(self, category: str, name: str, price: float, 
                    description: Optional[str] = None, stock: int = -1, 
-                   sort_order: int = 0, photo_url: Optional[str] = None) -> bool:
+                   sort_order: int = 0, photo_url: Optional[str] = None,
+                   input_lang: str = 'ru') -> bool:
         now = datetime.now().isoformat()
         try:
+            name_i18n = build_i18n_triplet(name, source_lang=input_lang)
+            desc_i18n = build_i18n_triplet(description, source_lang=input_lang) if description else {'ru': None, 'uk': None, 'en': None}
             self.execute(
                 """INSERT INTO products 
-                   (category, name, price_usd, description, stock, sort_order, photo_url, created_at, updated_at) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (category, name, price, description, stock, sort_order, photo_url, now, now),
+                   (category, name, name_ru, name_uk, name_en, price_usd, description, description_ru, description_uk, description_en, stock, sort_order, photo_url, created_at, updated_at) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    category, name, name_i18n['ru'], name_i18n['uk'], name_i18n['en'],
+                    price, description, desc_i18n['ru'], desc_i18n['uk'], desc_i18n['en'],
+                    stock, sort_order, photo_url, now, now
+                ),
                 commit=True
             )
             self.invalidate_product_cache(-1)
@@ -511,8 +619,22 @@ class Database:
             return False
     
     def update_product(self, product_id: int, **kwargs) -> bool:
+        input_lang = kwargs.pop('input_lang', 'ru')
         allowed = ['category', 'name', 'price_usd', 'description', 
-                  'stock', 'sort_order', 'is_active', 'photo_url']
+                  'stock', 'sort_order', 'is_active', 'photo_url',
+                  'name_ru', 'name_uk', 'name_en', 'description_ru', 'description_uk', 'description_en']
+
+        if 'name' in kwargs:
+            name_i18n = build_i18n_triplet(kwargs.get('name'), source_lang=input_lang)
+            kwargs['name_ru'] = name_i18n['ru']
+            kwargs['name_uk'] = name_i18n['uk']
+            kwargs['name_en'] = name_i18n['en']
+
+        if 'description' in kwargs:
+            desc_i18n = build_i18n_triplet(kwargs.get('description'), source_lang=input_lang)
+            kwargs['description_ru'] = desc_i18n['ru']
+            kwargs['description_uk'] = desc_i18n['uk']
+            kwargs['description_en'] = desc_i18n['en']
         
         updates = []
         values = []

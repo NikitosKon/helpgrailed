@@ -37,7 +37,7 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
         return
     
     try:
-        items = db.get_products(category)
+        items = db.get_products(category, lang=user_lang)
         
         if not items:
             categories = db.get_categories(user_lang)
@@ -95,7 +95,9 @@ async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
     query = update.callback_query
     user = query.from_user
     
-    prod = db.get_product(product_id)
+    user_data = db.get_user(user.id) or {}
+    user_lang = user_data.get('language', 'ru')
+    prod = db.get_product(product_id, lang=user_lang)
     if not prod:
         await query.edit_message_text("❌ Товар не найден.")
         return
@@ -152,7 +154,9 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
     query = update.callback_query
     user = query.from_user
     
-    prod = db.get_product(product_id)
+    user_data = db.get_user(user.id) or {}
+    user_lang = user_data.get('language', 'ru')
+    prod = db.get_product(product_id, lang=user_lang)
     if not prod:
         await query.answer("❌ Товар не найден", show_alert=True)
         return

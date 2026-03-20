@@ -470,6 +470,8 @@ async def handle_admin_add_product_input(update: Update, context: ContextTypes.D
                 context.user_data.clear()
                 return
 
+            admin_user = db.get_user(user.id) or {}
+            input_lang = admin_user.get('language', 'ru')
             db.add_product(
                 category=context.user_data['add_prod_category'],
                 name=context.user_data['add_prod_name'],
@@ -477,7 +479,8 @@ async def handle_admin_add_product_input(update: Update, context: ContextTypes.D
                 description=context.user_data.get('add_prod_desc'),
                 stock=int(context.user_data['add_prod_stock']),
                 sort_order=sort_order,
-                photo_url=context.user_data.get('add_prod_photo_url')
+                photo_url=context.user_data.get('add_prod_photo_url'),
+                input_lang=input_lang
             )
 
             db.clear_pending_action(user.id)
@@ -1217,7 +1220,7 @@ async def handle_admin_photo_input(update: Update, context: ContextTypes.DEFAULT
                 'photo_url': photo_path,
             }
 
-        if db.update_product(product_id, **updates):
+        if db.update_product(product_id, input_lang='auto', **updates):
             await update.message.reply_text(
                 f"✅ Товар ID {product_id} обновлён!",
                 reply_markup=InlineKeyboardMarkup([
@@ -1466,7 +1469,7 @@ async def handle_admin_edit_product_input(update: Update, context: ContextTypes.
             'sort_order': context.user_data.get('edit_prod_sort', current['sort']),
             'photo_url': current['photo'],
         }
-        if db.update_product(product_id, **updates):
+        if db.update_product(product_id, input_lang='auto', **updates):
             await update.message.reply_text(
                 f"✅ Товар ID {product_id} обновлён!",
                 reply_markup=InlineKeyboardMarkup([
