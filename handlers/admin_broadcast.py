@@ -115,7 +115,7 @@ async def broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"📢 Рассылка {broadcast_id} отменена")
             break
             
-        user_id = user_row[0]
+        user_id = user_row['user_id'] if db.use_postgres else user_row[0]
         try:
             await context.bot.send_message(
                 user_id,
@@ -154,13 +154,14 @@ async def broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
         del active_broadcasts[broadcast_id]
     
     # Итоговый отчет
+    delivered_pct = (success / total * 100) if total else 0
     report = (
         f"📢 <b>Рассылка завершена!</b>\n\n"
         f"📊 Всего пользователей: {total}\n"
         f"✅ Успешно доставлено: {success}\n"
         f"🚫 Заблокировали бота: {blocked}\n"
         f"❌ Ошибок отправки: {failed}\n\n"
-        f"📈 Доставлено: {success}/{total} ({success/total*100:.1f}%)"
+        f"📈 Доставлено: {success}/{total} ({delivered_pct:.1f}%)"
     )
     
     await context.bot.send_message(
@@ -192,17 +193,21 @@ async def broadcast_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     
     # Получаем статистику по пользователям
-    total_users = db.execute("SELECT COUNT(*) FROM users", fetch=True)[0][0]
-    active_today = db.execute(
-        "SELECT COUNT(*) FROM users WHERE DATE(last_active) = DATE('now')",
+    total_row = db.execute("SELECT COUNT(*) as count FROM users", fetch=True)[0]
+    total_users = total_row['count'] if db.use_postgres else total_row[0]
+
+    active_today_row = db.execute(
+        "SELECT COUNT(*) as count FROM users WHERE DATE(last_active) = DATE(?)",
+        (datetime.now().date().isoformat(),),
         fetch=True
-    )[0][0]
+    )[0]
+    active_today = active_today_row['count'] if db.use_postgres else active_today_row[0]
     
     text = (
         f"📊 <b>Статистика пользователей</b>\n\n"
         f"👥 Всего пользователей: {total_users}\n"
         f"🟢 Активных сегодня: {active_today}\n"
-        f"📊 Процент активности: {active_today/total_users*100:.1f}%\n\n"
+        f"📊 Процент активности: {(active_today / total_users * 100) if total_users else 0:.1f}%\n\n"
         f"<i>Рассылка будет отправлена всем пользователям</i>"
     )
     

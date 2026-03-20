@@ -4,6 +4,7 @@ from database import db
 from keyboards.reply import categories_menu, get_text
 from config import SUPPORT_CONTACT, ADMIN_IDS
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,18 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
             keyboard.append([InlineKeyboardButton(btn_text, callback_data=f'prod_{pid}')])
         
         keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data='services')])
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        category_info = db.get_category(category)
+        category_photo = category_info.get('photo_url') if category_info else None
+
+        if category_photo and os.path.exists(category_photo):
+            with open(category_photo, 'rb') as photo_file:
+                await query.message.reply_photo(
+                    photo=photo_file,
+                    caption=text,
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+        else:
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         
     except Exception as e:
         logger.error(f"Ошибка в категории {category}: {e}")
@@ -94,12 +106,14 @@ async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
         price = prod.get('price_usd', 0)
         desc = prod.get('description', 'Описание отсутствует')
         stock = prod.get('stock', -1)
+        photo_url = prod.get('photo_url')
     else:
         name = prod[2]
         cat = prod[1]
         price = prod[3]
         desc = prod[4] or 'Описание отсутствует'
         stock = prod[5]
+        photo_url = prod[8] if len(prod) > 8 else None
     
     stock_str = '∞' if stock < 0 else str(stock)
     balance = db.get_balance(user.id)
@@ -118,11 +132,20 @@ async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
         [InlineKeyboardButton("🏠 Главное меню", callback_data='menu')]
     ]
     
-    await query.edit_message_text(
-        text, 
-        reply_markup=InlineKeyboardMarkup(keyboard), 
-        parse_mode='HTML'
-    )
+    if photo_url and os.path.exists(photo_url):
+        with open(photo_url, 'rb') as photo_file:
+            await query.message.reply_photo(
+                photo=photo_file,
+                caption=text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='HTML'
+            )
+    else:
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='HTML'
+        )
 
 async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id):
     """Обработка покупки"""

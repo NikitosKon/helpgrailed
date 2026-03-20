@@ -12,6 +12,15 @@ from config import DB_FILE, REFERRAL_BONUS
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_CATEGORIES = {
+    'grailed_accounts': {'ru': "📱 Grailed account's", 'uk': "📱 Grailed account's", 'en': "📱 Grailed account's"},
+    'paypal': {'ru': "💳 PayPal", 'uk': "💳 PayPal", 'en': "💳 PayPal"},
+    'call_service': {'ru': "📞 Прозвон сервис", 'uk': "📞 Прозвон сервіс", 'en': "📞 Call service"},
+    'grailed_likes': {'ru': "❤️ Накрутка лайков на Grailed", 'uk': "❤️ Накрутка лайків на Grailed", 'en': "❤️ Grailed likes"},
+    'ebay': {'ru': "🏷 eBay", 'uk': "🏷 eBay", 'en': "🏷 eBay"},
+    'support': {'ru': "🆘 Тех поддержка", 'uk': "🆘 Тех підтримка", 'en': "🆘 Support"},
+}
+
 class Database:
     """Класс для работы с базой данных (поддерживает SQLite и PostgreSQL)"""
     
@@ -30,6 +39,8 @@ class Database:
             logger.info(f"Connected to SQLite database: {DB_FILE}")
         
         self.init_tables()
+        self.ensure_schema_compat()
+        self.seed_default_categories()
         self.seed_products()
     
     def execute(self, query: str, params: tuple = (), 
@@ -167,6 +178,7 @@ class Database:
                     name_ru TEXT NOT NULL,
                     name_uk TEXT,
                     name_en TEXT,
+                    photo_url TEXT,
                     sort_order INTEGER DEFAULT 0,
                     created_at TEXT,
                     updated_at TEXT
@@ -275,6 +287,7 @@ class Database:
                     name_ru TEXT NOT NULL,
                     name_uk TEXT,
                     name_en TEXT,
+                    photo_url TEXT,
                     sort_order INTEGER DEFAULT 0,
                     created_at TEXT,
                     updated_at TEXT
@@ -286,6 +299,47 @@ class Database:
                 self.execute(query, commit=True)
             except Exception as e:
                 logger.error(f"Error creating table: {e}")
+
+    def ensure_schema_compat(self):
+        """Лёгкие миграции для уже существующих БД."""
+        try:
+            if self.use_postgres:
+                self.execute(
+                    "ALTER TABLE categories ADD COLUMN IF NOT EXISTS photo_url TEXT",
+                    commit=True
+                )
+            else:
+                cols = self.execute("PRAGMA table_info(categories)", fetch=True) or []
+                col_names = {row[1] for row in cols}
+                if 'photo_url' not in col_names:
+                    self.execute("ALTER TABLE categories ADD COLUMN photo_url TEXT", commit=True)
+        except Exception as e:
+            logger.warning(f"Schema compatibility migration skipped: {e}")
+
+    def seed_default_categories(self):
+        """Автозаполнение категорий, если таблица пустая."""
+        try:
+            result = self.execute("SELECT COUNT(*) as count FROM categories", fetch=True)
+            if not result:
+                return
+            count = result[0]['count'] if self.use_postgres else result[0][0]
+            if count > 0:
+                return
+
+            now = datetime.now().isoformat()
+            sort_order = 0
+            for cat_id, names in DEFAULT_CATEGORIES.items():
+                self.execute(
+                    """INSERT INTO categories
+                       (cat_id, name_ru, name_uk, name_en, photo_url, sort_order, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (cat_id, names['ru'], names['uk'], names['en'], None, sort_order, now, now),
+                    commit=True
+                )
+                sort_order += 10
+            logger.info("Default categories seeded")
+        except Exception as e:
+            logger.warning(f"Could not seed default categories: {e}")
     
     def seed_products(self):
         examples = [
@@ -471,9 +525,9 @@ class Database:
         if not updates:
             return False
         
-        values.append(product_id)
         updates.append("updated_at = ?")
         values.append(datetime.now().isoformat())
+        values.append(product_id)
         
         query = f"UPDATE products SET {', '.join(updates)} WHERE id = ?"
         
@@ -500,7 +554,7 @@ class Database:
         """Получить все категории из БД на нужном языке"""
         try:
             result = self.execute(
-                "SELECT cat_id, name_ru, name_uk, name_en FROM categories ORDER BY sort_order",
+                "SELECT cat_id, name_ru, name_uk, name_en FROM categories ORDER BY sort_order, cat_id",
                 fetch=True
             )
             
@@ -528,24 +582,49 @@ class Database:
                 logger.info(f"Loaded {len(categories)} categories from DB for lang {lang}")
                 return categories
             else:
-                logger.warning("No categories found in database")
-                return {}
+                logger.warning("No categories found in database, using defaults")
+                return {cat_id: (names.get(lang) or names['ru']) for cat_id, names in DEFAULT_CATEGORIES.items()}
         except Exception as e:
             logger.error(f"Error getting categories: {e}")
-            return {}
+            return {cat_id: (names.get(lang) or names['ru']) for cat_id, names in DEFAULT_CATEGORIES.items()}
 
-    def add_category(self, cat_id: str, name_ru: str, name_uk: str = None, name_en: str = None, sort_order: int = 0) -> bool:
+    def get_category(self, cat_id: str) -> Optional[dict]:
+        """Получить категорию с метаданными."""
+        try:
+            result = self.execute(
+                "SELECT cat_id, name_ru, name_uk, name_en, photo_url, sort_order FROM categories WHERE cat_id = ?",
+                (cat_id,),
+                fetch=True
+            )
+            if not result:
+                return None
+            row = result[0]
+            if self.use_postgres:
+                return dict(row)
+            return {
+                'cat_id': row[0],
+                'name_ru': row[1],
+                'name_uk': row[2],
+                'name_en': row[3],
+                'photo_url': row[4] if len(row) > 4 else None,
+                'sort_order': row[5] if len(row) > 5 else 0,
+            }
+        except Exception as e:
+            logger.error(f"Failed to get category {cat_id}: {e}")
+            return None
+
+    def add_category(self, cat_id: str, name_ru: str, name_uk: str = None, name_en: str = None, sort_order: int = 0, photo_url: str = None) -> bool:
         """Добавить категорию с переводами"""
         now = datetime.now().isoformat()
         try:
             if self.use_postgres:
-                query = """INSERT INTO categories (cat_id, name_ru, name_uk, name_en, sort_order, created_at, updated_at) 
-                           VALUES (%s, %s, %s, %s, %s, %s, %s)"""
-                params = (cat_id, name_ru, name_uk, name_en, sort_order, now, now)
+                query = """INSERT INTO categories (cat_id, name_ru, name_uk, name_en, photo_url, sort_order, created_at, updated_at) 
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"""
+                params = (cat_id, name_ru, name_uk, name_en, photo_url, sort_order, now, now)
             else:
-                query = """INSERT INTO categories (cat_id, name_ru, name_uk, name_en, sort_order, created_at, updated_at) 
-                           VALUES (?, ?, ?, ?, ?, ?, ?)"""
-                params = (cat_id, name_ru, name_uk, name_en, sort_order, now, now)
+                query = """INSERT INTO categories (cat_id, name_ru, name_uk, name_en, photo_url, sort_order, created_at, updated_at) 
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)"""
+                params = (cat_id, name_ru, name_uk, name_en, photo_url, sort_order, now, now)
             
             self.execute(query, params, commit=True)
             logger.info(f"Category added successfully: {cat_id} - {name_ru}")
@@ -554,7 +633,7 @@ class Database:
             logger.error(f"Failed to add category {cat_id}: {e}")
             return False
 
-    def update_category(self, cat_id: str, name_ru: str = None, name_uk: str = None, name_en: str = None) -> bool:
+    def update_category(self, cat_id: str, name_ru: str = None, name_uk: str = None, name_en: str = None, photo_url: str = None) -> bool:
         """Обновить переводы категории"""
         now = datetime.now().isoformat()
         updates = []
@@ -569,6 +648,9 @@ class Database:
         if name_en:
             updates.append("name_en = ?")
             params.append(name_en)
+        if photo_url is not None:
+            updates.append("photo_url = ?")
+            params.append(photo_url)
         
         if not updates:
             return False

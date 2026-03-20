@@ -169,7 +169,12 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             return
 
         action, _ = pending
-        if action == 'admin_add_product_photo_waiting':
+        if (
+            action == 'admin_add_product_photo_waiting'
+            or action == 'admin_add_category_photo_waiting'
+            or action.startswith('admin_edit_category_photo_')
+            or (action.startswith('admin_edit_') and action.endswith('_photo_waiting'))
+        ):
             await handle_admin_photo_input(update, context)
         else:
             await message.reply_text(f"Ожидается действие: {action}\nФото сейчас не нужно.")
@@ -329,6 +334,11 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     if action in add_product_actions:
         await handle_admin_add_product_input(update, context, action, text)
+        return
+
+    if action.startswith('admin_edit_'):
+        from handlers.admin import handle_admin_edit_product_input
+        await handle_admin_edit_product_input(update, context, action, text)
         return
 
     # Если дошли сюда — неизвестное состояние
