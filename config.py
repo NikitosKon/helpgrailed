@@ -1,4 +1,4 @@
-import os
+﻿import os
 import json
 from dotenv import load_dotenv
 
@@ -117,6 +117,67 @@ class Config:
                 'error': "Помилка",
             }
         }
+
+        self.LANGUAGES['ru'].update({
+            'profile_title': 'Профиль',
+            'username_label': 'Username',
+            'not_set': 'нет',
+            'purchases_label': 'Покупок',
+            'total_spent_label': 'Всего потрачено',
+            'referrals_label': 'Рефералов',
+            'purchase_history': 'История покупок',
+            'your_purchases': 'Ваши покупки',
+            'no_purchases': 'У вас пока нет покупок.',
+            'balance_title': 'Баланс',
+            'current_balance': 'Текущий баланс',
+            'choose_action': 'Выберите действие:',
+            'promo_code': 'Промокод',
+            'other_amount': 'Другая сумма',
+            'choose_deposit_currency': 'Выберите валюту для пополнения:',
+            'selected_currency': 'Выбрана валюта',
+            'choose_deposit_amount': 'Выберите сумму пополнения:',
+            'enter_deposit_amount': 'Введите сумму пополнения (только число):',
+        })
+        self.LANGUAGES['en'].update({
+            'profile_title': 'Profile',
+            'username_label': 'Username',
+            'not_set': 'not set',
+            'purchases_label': 'Purchases',
+            'total_spent_label': 'Total spent',
+            'referrals_label': 'Referrals',
+            'purchase_history': 'Purchase history',
+            'your_purchases': 'Your purchases',
+            'no_purchases': 'You have no purchases yet.',
+            'balance_title': 'Balance',
+            'current_balance': 'Current balance',
+            'choose_action': 'Choose an action:',
+            'promo_code': 'Promo code',
+            'other_amount': 'Other amount',
+            'choose_deposit_currency': 'Choose deposit currency:',
+            'selected_currency': 'Selected currency',
+            'choose_deposit_amount': 'Choose deposit amount:',
+            'enter_deposit_amount': 'Enter deposit amount (numbers only):',
+        })
+        self.LANGUAGES['uk'].update({
+            'profile_title': 'Профіль',
+            'username_label': 'Username',
+            'not_set': 'немає',
+            'purchases_label': 'Покупок',
+            'total_spent_label': 'Всього витрачено',
+            'referrals_label': 'Рефералів',
+            'purchase_history': 'Історія покупок',
+            'your_purchases': 'Ваші покупки',
+            'no_purchases': 'У вас ще немає покупок.',
+            'balance_title': 'Баланс',
+            'current_balance': 'Поточний баланс',
+            'choose_action': 'Оберіть дію:',
+            'promo_code': 'Промокод',
+            'other_amount': 'Інша сума',
+            'choose_deposit_currency': 'Оберіть валюту для поповнення:',
+            'selected_currency': 'Обрана валюта',
+            'choose_deposit_amount': 'Оберіть суму поповнення:',
+            'enter_deposit_amount': 'Введіть суму поповнення (тільки число):',
+        })
         
         # Список поддерживаемых валют в CryptoPay
         self.CRYPTO_CURRENCIES = {

@@ -1,4 +1,4 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+﻿from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from database import db
 from keyboards.reply import deposit_menu, currency_menu, amount_menu, get_text, back_button, cancel_button
@@ -17,18 +17,18 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balance = db.get_balance(user.id)
     
     text = (
-        f"💰 <b>Баланс</b>\n\n"
-        f"Текущий баланс: <b>${balance:.2f}</b>\n\n"
-        f"Выберите действие:"
+        f"💰 <b>{get_text('balance_title', user.id)}</b>\n\n"
+        f"{get_text('current_balance', user.id)}: <b>${balance:.2f}</b>\n\n"
+        f"{get_text('choose_action', user.id)}"
     )
     
     keyboard = [
         [
-            InlineKeyboardButton("📥 Пополнить", callback_data='deposit'),
-            InlineKeyboardButton("📤 Вывести", callback_data='withdraw')
+            InlineKeyboardButton(get_text('deposit', user.id), callback_data='deposit'),
+            InlineKeyboardButton(get_text('withdraw', user.id), callback_data='withdraw')
         ],
-        [InlineKeyboardButton("🎫 Промокод", callback_data='promo_code')],
-        [InlineKeyboardButton("◀️ Назад", callback_data='menu')]
+        [InlineKeyboardButton(f"🎫 {get_text('promo_code', user.id)}", callback_data='promo_code')],
+        [InlineKeyboardButton(get_text('back', user.id), callback_data='menu')]
     ]
     
     await query.edit_message_text(
@@ -40,8 +40,9 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Меню пополнения - выбор валюты"""
     query = update.callback_query
-    text = "💰 Выберите валюту для пополнения:"
-    await query.edit_message_text(text, reply_markup=currency_menu())
+    user = query.from_user
+    text = f"💰 {get_text('choose_deposit_currency', user.id)}"
+    await query.edit_message_text(text, reply_markup=currency_menu(user.id))
 
 async def handle_currency_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, currency):
     """Обработка выбора валюты"""
@@ -51,8 +52,8 @@ async def handle_currency_selection(update: Update, context: ContextTypes.DEFAUL
     context.user_data['deposit_currency'] = currency
     
     currency_name = CRYPTO_CURRENCIES.get(currency, currency)
-    text = f"💰 Выбрана валюта: {currency_name}\n\nВыберите сумму пополнения:"
-    await query.edit_message_text(text, reply_markup=amount_menu(currency))
+    text = f"💰 {get_text('selected_currency', user.id)}: {currency_name}\n\n{get_text('choose_deposit_amount', user.id)}"
+    await query.edit_message_text(text, reply_markup=amount_menu(currency, user.id))
 
 async def handle_amount_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, currency, amount):
     """Обработка выбора суммы"""
@@ -70,8 +71,8 @@ async def handle_custom_amount(update: Update, context: ContextTypes.DEFAULT_TYP
     db.set_pending_action(user.id, f'deposit_custom_{currency}')
     
     currency_name = CRYPTO_CURRENCIES.get(currency, currency)
-    text = f"💰 Валюта: {currency_name}\n\nВведите сумму пополнения (только число):"
-    await query.edit_message_text(text, reply_markup=cancel_button())
+    text = f"💰 {get_text('selected_currency', user.id)}: {currency_name}\n\n{get_text('enter_deposit_amount', user.id)}"
+    await query.edit_message_text(text, reply_markup=cancel_button(user.id))
 
 async def handle_custom_deposit(update: Update, context: ContextTypes.DEFAULT_TYPE, text):
     """Обработка кастомной суммы"""

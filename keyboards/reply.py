@@ -1,4 +1,4 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+﻿from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from config import ADMIN_IDS, TOP_CURRENCIES, CRYPTO_CURRENCIES
 from database import db
 
@@ -94,7 +94,7 @@ def amount_menu(currency, user_id=None):
             row = []
     if row:
         keyboard.append(row)
-    keyboard.append([InlineKeyboardButton("💰 Другая сумма", callback_data=f'amount_{currency}_custom')])
+    keyboard.append([InlineKeyboardButton(get_text('other_amount', user_id), callback_data=f'amount_{currency}_custom')])
     keyboard.append([InlineKeyboardButton(get_text('back', user_id), callback_data='deposit')])
     return InlineKeyboardMarkup(keyboard)
 

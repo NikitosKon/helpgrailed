@@ -1,4 +1,4 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+﻿from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from database import db
 from keyboards.reply import back_button, get_text
@@ -52,17 +52,17 @@ async def handle_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         referrals = 0
     
     text = (
-        f"👤 <b>Профиль</b>\n\n"
+        f"👤 <b>{get_text('profile_title', user.id)}</b>\n\n"
         f"🆔 ID: <code>{user.id}</code>\n"
-        f"📝 Username: @{user.username or 'нет'}\n"
-        f"💰 Баланс: ${db.get_balance(user.id)}\n"
-        f"📦 Покупок: {purchases}\n"
-        f"💸 Всего потрачено: ${total_spent:.2f}\n"
-        f"👥 Рефералов: {referrals}"
+        f"📝 {get_text('username_label', user.id)}: @{user.username or get_text('not_set', user.id)}\n"
+        f"💰 {get_text('balance_title', user.id)}: ${db.get_balance(user.id)}\n"
+        f"📦 {get_text('purchases_label', user.id)}: {purchases}\n"
+        f"💸 {get_text('total_spent_label', user.id)}: ${total_spent:.2f}\n"
+        f"👥 {get_text('referrals_label', user.id)}: {referrals}"
     )
     
     keyboard = [
-        [InlineKeyboardButton("📜 История покупок", callback_data='purchase_history')],
+        [InlineKeyboardButton(f"📜 {get_text('purchase_history', user.id)}", callback_data='purchase_history')],
         [InlineKeyboardButton(get_text('back', user.id), callback_data='menu')]
     ]
     
@@ -81,21 +81,21 @@ async def handle_purchase_history(update: Update, context: ContextTypes.DEFAULT_
     
     if not history:
         await query.edit_message_text(
-            "📜 <b>История покупок</b>\n\n"
-            "У вас пока нет покупок.",
-            reply_markup=back_button('profile'),
+            f"📜 <b>{get_text('purchase_history', user.id)}</b>\n\n"
+            f"{get_text('no_purchases', user.id)}",
+            reply_markup=back_button('profile', user.id),
             parse_mode='HTML'
         )
         return
     
-    text = "📜 <b>Ваши покупки:</b>\n\n"
+    text = f"📜 <b>{get_text('your_purchases', user.id)}:</b>\n\n"
     for item in history:
         date = datetime.fromisoformat(item['purchase_date']).strftime('%d.%m.%Y')
         text += f"• {date} - {item['product_name']} - ${item['amount']}\n"
     
     await query.edit_message_text(
         text,
-        reply_markup=back_button('profile'),
+        reply_markup=back_button('profile', user.id),
         parse_mode='HTML'
     )
 

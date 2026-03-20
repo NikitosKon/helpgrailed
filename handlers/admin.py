@@ -1,4 +1,4 @@
-import os
+﻿import os
 import json
 import logging
 from uuid import uuid4
@@ -1141,48 +1141,6 @@ async def handle_admin_photo_input(update: Update, context: ContextTypes.DEFAULT
         )
         return
 
-    if action == 'admin_add_category_photo_waiting':
-        cat_id = context.user_data.get('new_category_id')
-        name_ru = context.user_data.get('new_category_name_ru')
-        name_uk = context.user_data.get('new_category_name_uk')
-        name_en = context.user_data.get('new_category_name_en')
-        if db.add_category(cat_id, name_ru, name_uk, name_en, photo_url=photo_path):
-            await update.message.reply_text(
-                "✅ Категория успешно добавлена!",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 К списку категорий", callback_data='admin_list_categories')],
-                    [InlineKeyboardButton("➕ Добавить ещё", callback_data='admin_add_category')],
-                    [InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')],
-                ])
-            )
-        else:
-            await update.message.reply_text("❌ Ошибка при добавлении категории")
-        db.clear_pending_action(user.id)
-        context.user_data.clear()
-        return
-
-    if action.startswith('admin_edit_category_photo_'):
-        cat_id = action.replace('admin_edit_category_photo_', '')
-        old = db.get_category(cat_id) or {}
-        name_ru = context.user_data.get('edit_cat_ru_new', context.user_data.get('edit_cat_ru'))
-        name_uk = context.user_data.get('edit_cat_uk_new', context.user_data.get('edit_cat_uk'))
-        name_en = context.user_data.get('edit_cat_en_new', context.user_data.get('edit_cat_en'))
-        photo_to_save = photo_path or old.get('photo_url')
-
-        if db.update_category(cat_id, name_ru, name_uk, name_en, photo_to_save):
-            await update.message.reply_text(
-                "✅ Категория обновлена!",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 К списку категорий", callback_data='admin_list_categories')],
-                    [InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')],
-                ])
-            )
-        else:
-            await update.message.reply_text("❌ Ошибка при обновлении категории")
-        db.clear_pending_action(user.id)
-        context.user_data.clear()
-        return
-
     if action.startswith('admin_edit_') and action.endswith('_photo_waiting'):
         try:
             product_id = int(action.split('_')[2])
@@ -1238,7 +1196,7 @@ async def handle_admin_photo_input(update: Update, context: ContextTypes.DEFAULT
 
 
 async def handle_admin_add_category_input(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, text: str):
-    """Add category flow: id -> ru -> uk -> en -> photo."""
+    """Add category flow: id -> ru -> uk -> en."""
     user = update.effective_user
     text = text.strip()
     step = context.user_data.get('add_category_step', 'id')
@@ -1274,38 +1232,29 @@ async def handle_admin_add_category_input(update: Update, context: ContextTypes.
 
     if step == 'name_en':
         context.user_data['new_category_name_en'] = None if text == '/skip' else text
-        context.user_data['add_category_step'] = 'photo'
-        db.set_pending_action(user.id, 'admin_add_category_photo_waiting')
-        await update.message.reply_text("Отправьте фото категории или напишите /skip:")
-        return
-
-    if step == 'photo':
         cat_id = context.user_data['new_category_id']
         name_ru = context.user_data['new_category_name_ru']
         name_uk = context.user_data.get('new_category_name_uk')
         name_en = context.user_data.get('new_category_name_en')
 
-        if text == '/skip':
-            if db.add_category(cat_id, name_ru, name_uk, name_en, photo_url=None):
-                await update.message.reply_text(
-                    "✅ Категория успешно добавлена!",
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("📋 К списку категорий", callback_data='admin_list_categories')],
-                        [InlineKeyboardButton("➕ Добавить ещё", callback_data='admin_add_category')],
-                        [InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')],
-                    ])
-                )
-            else:
-                await update.message.reply_text("❌ Ошибка при добавлении категории")
-            db.clear_pending_action(user.id)
-            context.user_data.clear()
-            return
-
-        await update.message.reply_text("❌ Отправьте фото или /skip")
+        if db.add_category(cat_id, name_ru, name_uk, name_en):
+            await update.message.reply_text(
+                "✅ Категория успешно добавлена!",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📋 К списку категорий", callback_data='admin_list_categories')],
+                    [InlineKeyboardButton("➕ Добавить ещё", callback_data='admin_add_category')],
+                    [InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')],
+                ])
+            )
+        else:
+            await update.message.reply_text("❌ Ошибка при добавлении категории")
+        db.clear_pending_action(user.id)
+        context.user_data.clear()
+        return
 
 
 async def handle_admin_edit_category_input(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, text: str):
-    """Edit category flow: ru -> uk -> en -> photo."""
+    """Edit category flow: ru -> uk -> en."""
     user = update.effective_user
 
     if action.startswith('admin_edit_category_ru_'):
@@ -1328,17 +1277,10 @@ async def handle_admin_edit_category_input(update: Update, context: ContextTypes
         cat_id = action.replace('admin_edit_category_en_', '')
         if text != '/skip':
             context.user_data['edit_cat_en_new'] = text
-        db.set_pending_action(user.id, f'admin_edit_category_photo_{cat_id}')
-        await update.message.reply_text("Отправьте новое фото категории или /skip:")
-        return
-
-    if action.startswith('admin_edit_category_photo_') and text == '/skip':
-        cat_id = action.replace('admin_edit_category_photo_', '')
-        old = db.get_category(cat_id) or {}
         name_ru = context.user_data.get('edit_cat_ru_new', context.user_data.get('edit_cat_ru'))
         name_uk = context.user_data.get('edit_cat_uk_new', context.user_data.get('edit_cat_uk'))
         name_en = context.user_data.get('edit_cat_en_new', context.user_data.get('edit_cat_en'))
-        if db.update_category(cat_id, name_ru, name_uk, name_en, old.get('photo_url')):
+        if db.update_category(cat_id, name_ru, name_uk, name_en):
             await update.message.reply_text(
                 "✅ Категория обновлена!",
                 reply_markup=InlineKeyboardMarkup([
@@ -1350,6 +1292,7 @@ async def handle_admin_edit_category_input(update: Update, context: ContextTypes
             await update.message.reply_text("❌ Ошибка при обновлении категории")
         db.clear_pending_action(user.id)
         context.user_data.clear()
+        return
 
 
 async def handle_admin_edit_product_input(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, text: str):
