@@ -22,9 +22,16 @@ from handlers.menu import button_handler, text_handler
 from handlers.admin import handle_admin
 from handlers.language import language_command, language_callback
 from handlers.commands import (
-    menu_command, profile_command, balance_command,
-    services_command, referral_command, help_command, admin_command,
-    fix_categories_command, check_categories_command
+    menu_command,
+    profile_command,
+    balance_command,
+    services_command,
+    referral_command,
+    help_command,
+    admin_command,
+    fix_categories_command,
+    check_categories_command,
+    force_add_categories,
 )
 
 # Настройка логирования
@@ -303,7 +310,7 @@ def main():
     application.add_handler(CommandHandler("admin", admin_command))
     application.add_handler(CommandHandler("fixcats", fix_categories_command))
     application.add_handler(CommandHandler("checkcats", check_categories_command))
-    application.add_handler(CommandHandler("forcecats", force_add_categories))
+    application.add_handler(CommandHandler("forcecats", force_add_categories))ё
 
     # Регистрируем обработчики callback-запросов
     application.add_handler(CallbackQueryHandler(language_callback, pattern='^lang_'))
