@@ -43,6 +43,9 @@ async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     user = query.from_user
     lang = query.data.replace('lang_', '')
+    if lang not in LANGUAGES:
+        await query.answer("❌ Unsupported language", show_alert=True)
+        return
     
     # Сохраняем язык пользователя в БД
     db.execute(
@@ -54,9 +57,11 @@ async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Очищаем user_data
     context.user_data.clear()
     
-    # Получаем пользователя и показываем главное меню
-    user_data = db.get_user(user.id)
-    text = LANGUAGES[lang]['welcome'].format(name=user.first_name)
+    # Показываем подтверждение + главное меню на выбранном языке
+    text = (
+        f"{LANGUAGES[lang]['language_changed']}\n\n"
+        f"{LANGUAGES[lang]['welcome'].format(name=user.first_name)}"
+    )
     
     await query.edit_message_text(
         text,

@@ -63,7 +63,7 @@ async def handle_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [
         [InlineKeyboardButton("📜 История покупок", callback_data='purchase_history')],
-        [InlineKeyboardButton(get_text('back'), callback_data='menu')]
+        [InlineKeyboardButton(get_text('back', user.id), callback_data='menu')]
     ]
     
     await query.edit_message_text(

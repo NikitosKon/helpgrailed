@@ -117,8 +117,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     # Админ-панель (все что связано с админкой, включая рассылки)
     elif (data.startswith('admin') or 
-          data.startswith('promo_type_') or 
-          data.startswith('promo_target_') or
+          data.startswith('promo_') or 
           data.startswith('broadcast_')):
         logger.info(f"📢 Передаем в админ-панель: {data}")
         await handle_admin(update, context, data)
@@ -305,14 +304,14 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         db.clear_pending_action(user.id)
         return
 
-    # Добавление категории
-    if action == 'admin_add_category_id' or action == 'admin_add_category_name':
+    # Добавление категории (мультиязычный мастер)
+    if action.startswith('admin_add_category_'):
         from handlers.admin import handle_admin_add_category_input
         await handle_admin_add_category_input(update, context, action, text)
         return
 
-    # Редактирование категории
-    if action.startswith('admin_edit_category_name_'):
+    # Редактирование категории (ru/uk/en шаги)
+    if action.startswith('admin_edit_category_'):
         from handlers.admin import handle_admin_edit_category_input
         await handle_admin_edit_category_input(update, context, action, text)
         return

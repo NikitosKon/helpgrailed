@@ -21,6 +21,8 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
     """Показать товары в категории"""
     query = update.callback_query
     user = query.from_user
+    user_data = db.get_user(user.id) or {}
+    user_lang = user_data.get('language', 'ru')
     
     logger.info(f"Категория: {category}")
     
@@ -37,17 +39,17 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
         items = db.get_products(category)
         
         if not items:
-            categories = db.get_categories()
+            categories = db.get_categories(user_lang)
             cat_name = categories.get(category, category)
             await query.edit_message_text(
-                f"😕 В категории {cat_name} пока нет товаров.",
+                f"{get_text('no_items', user.id)}\n\n{cat_name}",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(get_text('back', user.id), callback_data='services')]])
             )
             return
         
-        categories = db.get_categories()
+        categories = db.get_categories(user_lang)
         cat_name = categories.get(category, category)
-        text = f"{cat_name}\n\nВыберите товар:"
+        text = f"{cat_name}\n\n{get_text('choose_item', user.id)}"
         keyboard = []
         
         for item in items:
@@ -63,7 +65,7 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
                 stock = item[5]
             
             stock_str = '∞' if stock < 0 else str(stock)
-            btn_text = f"{name} — ${price:.0f} (в наличии: {stock_str})"
+            btn_text = f"{name} — ${price:.0f} ({get_text('in_stock', user.id)}: {stock_str})"
             keyboard.append([InlineKeyboardButton(btn_text, callback_data=f'prod_{pid}')])
         
         keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data='services')])

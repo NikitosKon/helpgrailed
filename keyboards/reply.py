@@ -42,7 +42,13 @@ def cancel_button(user_id=None):
 def categories_menu(user_id=None):
     """Меню категорий из БД"""
     try:
-        categories = db.get_categories()
+        lang = 'ru'
+        if user_id:
+            user = db.get_user(user_id)
+            if user and user.get('language'):
+                lang = user.get('language')
+
+        categories = db.get_categories(lang)
         
         keyboard = []
         if categories:
