@@ -1,12 +1,9 @@
 from typing import Dict, Optional
 
 try:
-    from googletrans import Translator
+    from deep_translator import GoogleTranslator
 except Exception:  # pragma: no cover
-    Translator = None
-
-
-_translator = Translator() if Translator else None
+    GoogleTranslator = None
 
 
 def translate_text(text: Optional[str], dest: str, src: Optional[str] = None) -> Optional[str]:
@@ -15,11 +12,12 @@ def translate_text(text: Optional[str], dest: str, src: Optional[str] = None) ->
         return text
     if dest == src:
         return text
-    if _translator is None:
+    if GoogleTranslator is None:
         return text
 
     try:
-        return _translator.translate(text, dest=dest, src=src).text
+        source = src if src in {"ru", "uk", "en"} else "auto"
+        return GoogleTranslator(source=source, target=dest).translate(text)
     except Exception:
         return text
 
@@ -33,4 +31,3 @@ def build_i18n_triplet(text: Optional[str], source_lang: str = "ru") -> Dict[str
     uk = translate_text(text, "uk", src=src)
     en = translate_text(text, "en", src=src)
     return {"ru": ru, "uk": uk, "en": en}
-
