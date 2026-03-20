@@ -303,6 +303,7 @@ def main():
     application.add_handler(CommandHandler("admin", admin_command))
     application.add_handler(CommandHandler("fixcats", fix_categories_command))
     application.add_handler(CommandHandler("checkcats", check_categories_command))
+    application.add_handler(CommandHandler("forcecats", force_add_categories))
 
     # Регистрируем обработчики callback-запросов
     application.add_handler(CallbackQueryHandler(language_callback, pattern='^lang_'))

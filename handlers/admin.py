@@ -831,6 +831,7 @@ async def admin_add_category_start(update: Update, context: ContextTypes.DEFAULT
     query = update.callback_query
     user = query.from_user
     
+    # Сохраняем шаги для ввода переводов
     context.user_data['add_category_step'] = 'id'
     db.set_pending_action(user.id, 'admin_add_category_id')
     
@@ -848,7 +849,9 @@ async def handle_admin_add_category_input(update: Update, context: ContextTypes.
     user = update.effective_user
     text = text.strip()
     
-    if action == 'admin_add_category_id':
+    step = context.user_data.get('add_category_step', 'id')
+    
+    if step == 'id':
         import re
         if not re.match(r'^[a-z0-9_]+$', text):
             await update.message.reply_text(
@@ -857,7 +860,6 @@ async def handle_admin_add_category_input(update: Update, context: ContextTypes.
             )
             return
         
-        # Проверяем, существует ли уже такой ID
         existing = db.get_categories()
         if text in existing:
             await update.message.reply_text(
@@ -867,61 +869,64 @@ async def handle_admin_add_category_input(update: Update, context: ContextTypes.
             )
             return
         
-        context.user_data['new_cat_id'] = text
-        context.user_data['add_step'] = 'name_ru'
+        context.user_data['new_category_id'] = text
+        context.user_data['add_category_step'] = 'name_ru'
         db.set_pending_action(user.id, 'admin_add_category_name_ru')
         
         await update.message.reply_text(
             f"✅ ID категории: <b>{text}</b>\n\n"
-            "Теперь введите <b>название на русском</b> (с эмодзи):\n"
-            "Пример: <code>📱 Новая категория</code>",
+            "Введите <b>название на русском</b>:",
             parse_mode='HTML'
         )
         return
     
-    elif action == 'admin_add_category_name_ru':
-        context.user_data['cat_name_ru'] = text
-        context.user_data['add_step'] = 'name_uk'
+    elif step == 'name_ru':
+        context.user_data['new_category_name_ru'] = text
+        context.user_data['add_category_step'] = 'name_uk'
         db.set_pending_action(user.id, 'admin_add_category_name_uk')
         
         await update.message.reply_text(
-            f"✅ Русское название: {text}\n\n"
-            "Теперь введите <b>название на украинском</b>:",
+            "✅ Название на русском сохранено\n\n"
+            "Введите <b>название на украинском</b> (или /skip чтобы пропустить):",
             parse_mode='HTML'
         )
         return
     
-    elif action == 'admin_add_category_name_uk':
-        context.user_data['cat_name_uk'] = text
-        context.user_data['add_step'] = 'name_en'
+    elif step == 'name_uk':
+        if text != '/skip':
+            context.user_data['new_category_name_uk'] = text
+        else:
+            context.user_data['new_category_name_uk'] = None
+        
+        context.user_data['add_category_step'] = 'name_en'
         db.set_pending_action(user.id, 'admin_add_category_name_en')
         
         await update.message.reply_text(
-            f"✅ Украинское название: {text}\n\n"
-            "Теперь введите <b>название на английском</b>:",
+            "✅ Название на украинском сохранено\n\n"
+            "Введите <b>название на английском</b> (или /skip чтобы пропустить):",
             parse_mode='HTML'
         )
         return
     
-    elif action == 'admin_add_category_name_en':
-        cat_id = context.user_data.get('new_cat_id')
-        name_ru = context.user_data.get('cat_name_ru')
-        name_uk = context.user_data.get('cat_name_uk')
-        name_en = text
+    elif step == 'name_en':
+        if text != '/skip':
+            context.user_data['new_category_name_en'] = text
+        else:
+            context.user_data['new_category_name_en'] = None
         
-        if not all([cat_id, name_ru, name_uk, name_en]):
-            await update.message.reply_text("❌ Ошибка: данные потеряны. Начните заново.")
-            db.clear_pending_action(user.id)
-            context.user_data.clear()
-            return
+        # Сохраняем категорию
+        cat_id = context.user_data['new_category_id']
+        name_ru = context.user_data['new_category_name_ru']
+        name_uk = context.user_data.get('new_category_name_uk')
+        name_en = context.user_data.get('new_category_name_en')
         
         if db.add_category(cat_id, name_ru, name_uk, name_en):
             await update.message.reply_text(
                 f"✅ Категория успешно добавлена!\n\n"
                 f"ID: <b>{cat_id}</b>\n"
-                f"🇷🇺 {name_ru}\n"
-                f"🇺🇦 {name_uk}\n"
-                f"🇬🇧 {name_en}",
+                f"🇷🇺 Русский: <b>{name_ru}</b>\n"
+                f"🇺🇦 Українська: <b>{name_uk or 'не указан'}</b>\n"
+                f"🇬🇧 English: <b>{name_en or 'not specified'}</b>",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("📋 К списку категорий", callback_data='admin_list_categories')],
                     [InlineKeyboardButton("➕ Добавить ещё", callback_data='admin_add_category')],
