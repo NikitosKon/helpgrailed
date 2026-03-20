@@ -23,6 +23,7 @@ DEFAULT_CATEGORIES = {
 }
 
 class Database:
+    _bootstrapped = False
     """Класс для работы с базой данных (поддерживает SQLite и PostgreSQL)"""
     
     def __init__(self):
@@ -39,10 +40,12 @@ class Database:
             self.conn.row_factory = sqlite3.Row
             logger.info(f"Connected to SQLite database: {DB_FILE}")
         
-        self.init_tables()
-        self.ensure_schema_compat()
-        self.seed_default_categories()
-        self.seed_products()
+        if not Database._bootstrapped:
+            self.init_tables()
+            self.ensure_schema_compat()
+            self.seed_default_categories()
+            self.seed_products()
+            Database._bootstrapped = True
     
     def execute(self, query: str, params: tuple = (), 
                 fetch: bool = False, commit: bool = False) -> Optional[List[Any]]:
