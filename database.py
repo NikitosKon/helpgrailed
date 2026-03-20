@@ -321,9 +321,32 @@ class Database:
         try:
             if self.use_postgres:
                 self.execute(
+                    "ALTER TABLE categories ADD COLUMN IF NOT EXISTS name_ru TEXT",
+                    commit=True
+                )
+                self.execute(
+                    "ALTER TABLE categories ADD COLUMN IF NOT EXISTS name_uk TEXT",
+                    commit=True
+                )
+                self.execute(
+                    "ALTER TABLE categories ADD COLUMN IF NOT EXISTS name_en TEXT",
+                    commit=True
+                )
+                self.execute(
                     "ALTER TABLE categories ADD COLUMN IF NOT EXISTS photo_url TEXT",
                     commit=True
                 )
+                try:
+                    self.execute(
+                        """UPDATE categories
+                           SET name_ru = COALESCE(name_ru, name),
+                               name_uk = COALESCE(name_uk, name),
+                               name_en = COALESCE(name_en, name)
+                           WHERE name IS NOT NULL""",
+                        commit=True
+                    )
+                except Exception:
+                    pass
                 self.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS name_ru TEXT", commit=True)
                 self.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS name_uk TEXT", commit=True)
                 self.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS name_en TEXT", commit=True)
@@ -333,8 +356,23 @@ class Database:
             else:
                 cols = self.execute("PRAGMA table_info(categories)", fetch=True) or []
                 col_names = {row[1] for row in cols}
+                if 'name_ru' not in col_names:
+                    self.execute("ALTER TABLE categories ADD COLUMN name_ru TEXT", commit=True)
+                if 'name_uk' not in col_names:
+                    self.execute("ALTER TABLE categories ADD COLUMN name_uk TEXT", commit=True)
+                if 'name_en' not in col_names:
+                    self.execute("ALTER TABLE categories ADD COLUMN name_en TEXT", commit=True)
                 if 'photo_url' not in col_names:
                     self.execute("ALTER TABLE categories ADD COLUMN photo_url TEXT", commit=True)
+                if 'name' in col_names:
+                    self.execute(
+                        """UPDATE categories
+                           SET name_ru = COALESCE(name_ru, name),
+                               name_uk = COALESCE(name_uk, name),
+                               name_en = COALESCE(name_en, name)
+                           WHERE name IS NOT NULL""",
+                        commit=True
+                    )
 
                 prod_cols = self.execute("PRAGMA table_info(products)", fetch=True) or []
                 prod_col_names = {row[1] for row in prod_cols}
