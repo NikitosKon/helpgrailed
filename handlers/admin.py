@@ -163,6 +163,15 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
     elif data == 'admin_edit_category':
         await admin_edit_category_list(update, context)
 
+    elif data.startswith('admin_edit_cat_text_'):
+        cat_id = data.replace('admin_edit_cat_text_', '', 1)
+        await admin_edit_category_text_start(update, context, cat_id)
+    elif data.startswith('admin_edit_cat_photo_remove_'):
+        cat_id = data.replace('admin_edit_cat_photo_remove_', '', 1)
+        await admin_remove_category_photo(update, context, cat_id)
+    elif data.startswith('admin_edit_cat_photo_'):
+        cat_id = data.replace('admin_edit_cat_photo_', '', 1)
+        await admin_edit_category_photo_start(update, context, cat_id)
     elif data.startswith('admin_edit_cat_'):
         cat_id = data[15:]  # обрезаем 'admin_edit_cat_'
         await admin_edit_category_start(update, context, cat_id)
@@ -1564,34 +1573,92 @@ async def admin_edit_category_list(update: Update, context: ContextTypes.DEFAULT
 
 
 async def admin_edit_category_start(update: Update, context: ContextTypes.DEFAULT_TYPE, cat_id: str):
-    """Начало редактирования категории"""
+    """Экран редактирования категории."""
     query = update.callback_query
-    user = query.from_user
-    
-    # Получаем текущие названия
-    categories_ru = db.get_categories('ru')
-    categories_uk = db.get_categories('uk')
-    categories_en = db.get_categories('en')
-    
-    if cat_id not in categories_ru:
+    category = db.get_category(cat_id)
+    if not category:
         await _edit_or_send(query, "❌ Категория не найдена")
         return
-    
-    context.user_data['edit_cat_id'] = cat_id
-    context.user_data['edit_cat_ru'] = categories_ru.get(cat_id, '')
-    context.user_data['edit_cat_uk'] = categories_uk.get(cat_id, '')
-    context.user_data['edit_cat_en'] = categories_en.get(cat_id, '')
-    context.user_data['edit_step'] = 'ru'
-    
-    db.set_pending_action(user.id, f'admin_edit_category_ru_{cat_id}')
-    
-    await _edit_or_send(query, 
+
+    categories_uk = db.get_categories('uk')
+    categories_en = db.get_categories('en')
+    photo_state = "есть" if category.get('photo_url') else "нет"
+
+    await _edit_or_send(
+        query,
         f"✏️ <b>Редактирование категории {cat_id}</b>\n\n"
-        f"Текущее русское название: {categories_ru.get(cat_id, '')}\n\n"
-        f"Введите новое название на русском (или /skip для пропуска):",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data='admin_categories_menu')]]),
+        f"🇷🇺 {category.get('name_ru') or '—'}\n"
+        f"🇺🇦 {categories_uk.get(cat_id) or category.get('name_uk') or '—'}\n"
+        f"🇬🇧 {categories_en.get(cat_id) or category.get('name_en') or '—'}\n"
+        f"🖼 Фото: {photo_state}",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📝 Изменить названия", callback_data=f'admin_edit_cat_text_{cat_id}')],
+            [InlineKeyboardButton("🖼 Обновить фото", callback_data=f'admin_edit_cat_photo_{cat_id}')],
+            [InlineKeyboardButton("🗑 Удалить фото", callback_data=f'admin_edit_cat_photo_remove_{cat_id}')],
+            [InlineKeyboardButton("◀️ Назад", callback_data='admin_edit_category')],
+        ]),
         parse_mode='HTML'
     )
+
+
+async def admin_edit_category_text_start(update: Update, context: ContextTypes.DEFAULT_TYPE, cat_id: str):
+    query = update.callback_query
+    user = query.from_user
+    category = db.get_category(cat_id)
+    if not category:
+        await _edit_or_send(query, "❌ Категория не найдена")
+        return
+
+    context.user_data['edit_cat_id'] = cat_id
+    context.user_data['edit_cat_ru'] = category.get('name_ru') or ''
+    context.user_data['edit_cat_uk'] = category.get('name_uk') or ''
+    context.user_data['edit_cat_en'] = category.get('name_en') or ''
+
+    db.set_pending_action(user.id, f'admin_edit_category_ru_{cat_id}')
+    await _edit_or_send(
+        query,
+        f"✏️ <b>Редактирование названий категории {cat_id}</b>\n\n"
+        f"Текущее русское название: {category.get('name_ru') or '—'}\n\n"
+        f"Введите новое название на русском (или /skip для пропуска):",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data=f'admin_edit_cat_{cat_id}')]]),
+        parse_mode='HTML'
+    )
+
+
+async def admin_edit_category_photo_start(update: Update, context: ContextTypes.DEFAULT_TYPE, cat_id: str):
+    query = update.callback_query
+    user = query.from_user
+    if not db.get_category(cat_id):
+        await _edit_or_send(query, "❌ Категория не найдена")
+        return
+
+    db.set_pending_action(user.id, f'admin_edit_category_photo_{cat_id}')
+    await _edit_or_send(
+        query,
+        "🖼 Отправьте фото для категории.",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data=f'admin_edit_cat_{cat_id}')]])
+    )
+
+
+async def admin_remove_category_photo(update: Update, context: ContextTypes.DEFAULT_TYPE, cat_id: str):
+    query = update.callback_query
+    category = db.get_category(cat_id)
+    if not category:
+        await _edit_or_send(query, "❌ Категория не найдена")
+        return
+
+    if db.update_category(cat_id, photo_url=''):
+        await _edit_or_send(
+            query,
+            "✅ Фото категории удалено.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data=f'admin_edit_cat_{cat_id}')]])
+        )
+    else:
+        await _edit_or_send(
+            query,
+            "❌ Не удалось удалить фото категории.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data=f'admin_edit_cat_{cat_id}')]])
+        )
 
 
 async def handle_admin_edit_category_input(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, text: str):
@@ -1782,6 +1849,51 @@ async def handle_admin_photo_input(update: Update, context: ContextTypes.DEFAULT
         context.user_data.clear()
         return
 
+    if action == 'admin_add_category_photo':
+        context.user_data['new_category_photo_url'] = photo_path
+        cat_id = context.user_data['new_category_id']
+        name_ru = context.user_data['new_category_name_ru']
+        name_uk = context.user_data.get('new_category_name_uk')
+        name_en = context.user_data.get('new_category_name_en')
+
+        if db.add_category(cat_id, name_ru, name_uk, name_en, photo_url=photo_path):
+            await update.message.reply_text(
+                "✅ Категория успешно добавлена!",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📋 К списку категорий", callback_data='admin_list_categories')],
+                    [InlineKeyboardButton("➕ Добавить ещё", callback_data='admin_add_category')],
+                    [InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')],
+                ])
+            )
+        else:
+            await update.message.reply_text("❌ Ошибка при добавлении категории")
+
+        db.clear_pending_action(user.id)
+        context.user_data.clear()
+        return
+
+    if action.startswith('admin_edit_category_photo_'):
+        cat_id = action.replace('admin_edit_category_photo_', '', 1)
+        category = db.get_category(cat_id)
+        if not category:
+            await update.message.reply_text("❌ Категория не найдена")
+            db.clear_pending_action(user.id)
+            return
+
+        if db.update_category(cat_id, photo_url=photo_path):
+            await update.message.reply_text(
+                "✅ Фото категории обновлено!",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("◀️ Назад", callback_data=f'admin_edit_cat_{cat_id}')],
+                ])
+            )
+        else:
+            await update.message.reply_text("❌ Ошибка при обновлении фото категории")
+
+        db.clear_pending_action(user.id)
+        context.user_data.clear()
+        return
+
     await update.message.reply_text("❌ Сейчас фото не ожидается в этом шаге.")
 
 
@@ -1822,12 +1934,20 @@ async def handle_admin_add_category_input(update: Update, context: ContextTypes.
 
     if step == 'name_en':
         context.user_data['new_category_name_en'] = None if text == '/skip' else text
+        context.user_data['add_category_step'] = 'photo'
+        db.set_pending_action(user.id, 'admin_add_category_photo')
+        await update.message.reply_text("Отправьте фото для категории или /skip:")
+        return
+
+    if step == 'photo':
+        context.user_data['new_category_photo_url'] = None if text == '/skip' else text
         cat_id = context.user_data['new_category_id']
         name_ru = context.user_data['new_category_name_ru']
         name_uk = context.user_data.get('new_category_name_uk')
         name_en = context.user_data.get('new_category_name_en')
+        photo_url = context.user_data.get('new_category_photo_url')
 
-        if db.add_category(cat_id, name_ru, name_uk, name_en):
+        if db.add_category(cat_id, name_ru, name_uk, name_en, photo_url=photo_url):
             await update.message.reply_text(
                 "✅ Категория успешно добавлена!",
                 reply_markup=InlineKeyboardMarkup([
@@ -1846,6 +1966,20 @@ async def handle_admin_add_category_input(update: Update, context: ContextTypes.
 async def handle_admin_edit_category_input(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, text: str):
     """Edit category flow: ru -> uk -> en."""
     user = update.effective_user
+
+    if action.startswith('admin_edit_category_photo_'):
+        cat_id = action.replace('admin_edit_category_photo_', '', 1)
+        if text == '/skip':
+            db.clear_pending_action(user.id)
+            await update.message.reply_text(
+                "Изменение фото отменено.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("◀️ Назад", callback_data=f'admin_edit_cat_{cat_id}')],
+                ])
+            )
+        else:
+            await update.message.reply_text("❌ Отправьте фото или нажмите кнопку отмены.")
+        return
 
     if action.startswith('admin_edit_category_ru_'):
         cat_id = action.replace('admin_edit_category_ru_', '')

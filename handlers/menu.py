@@ -187,9 +187,11 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         action, _ = pending
         if (
             action == 'admin_add_product_photo_waiting'
+            or action == 'admin_add_category_photo'
             or action == 'admin_home_photo'
             or action.startswith('admin_menu_core_photo_')
             or action == 'broadcast_photo'
+            or action.startswith('admin_edit_category_photo_')
             or (action.startswith('admin_edit_') and action.endswith('_photo_waiting'))
         ):
             if action == 'admin_home_photo':
