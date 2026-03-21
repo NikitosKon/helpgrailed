@@ -13,6 +13,11 @@ from utils.translator import build_i18n_triplet
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_ROOT_CATEGORIES = {
+    'grailed': {'ru': '📂 Grailed', 'uk': '📂 Grailed', 'en': '📂 Grailed'},
+    'support': None,  # filled from DEFAULT_CATEGORIES at runtime (see seed_default_categories)
+}
+
 DEFAULT_CATEGORIES = {
     'grailed_accounts': {'ru': "📱 Grailed account's", 'uk': "📱 Grailed account's", 'en': "📱 Grailed account's"},
     'paypal': {'ru': "💳 PayPal", 'uk': "💳 PayPal", 'en': "💳 PayPal"},
@@ -201,6 +206,18 @@ class Database:
                     created_at TEXT,
                     updated_at TEXT
                 )""",
+                """CREATE TABLE IF NOT EXISTS subcategories (
+                    id SERIAL PRIMARY KEY,
+                    subcat_id TEXT UNIQUE NOT NULL,
+                    parent_cat_id TEXT NOT NULL,
+                    name_ru TEXT NOT NULL,
+                    name_uk TEXT,
+                    name_en TEXT,
+                    photo_url TEXT,
+                    sort_order INTEGER DEFAULT 0,
+                    created_at TEXT,
+                    updated_at TEXT
+                )""",
                 """CREATE TABLE IF NOT EXISTS bot_settings (
                     key TEXT PRIMARY KEY,
                     value TEXT,
@@ -338,6 +355,18 @@ class Database:
                     created_at TEXT,
                     updated_at TEXT
                 )""",
+                """CREATE TABLE IF NOT EXISTS subcategories (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    subcat_id TEXT UNIQUE NOT NULL,
+                    parent_cat_id TEXT NOT NULL,
+                    name_ru TEXT NOT NULL,
+                    name_uk TEXT,
+                    name_en TEXT,
+                    photo_url TEXT,
+                    sort_order INTEGER DEFAULT 0,
+                    created_at TEXT,
+                    updated_at TEXT
+                )""",
                 """CREATE TABLE IF NOT EXISTS bot_settings (
                     key TEXT PRIMARY KEY,
                     value TEXT,
@@ -397,6 +426,22 @@ class Database:
                 self.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS description_ru TEXT", commit=True)
                 self.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS description_uk TEXT", commit=True)
                 self.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS description_en TEXT", commit=True)
+                self.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS subcategory TEXT", commit=True)
+                self.execute(
+                    """CREATE TABLE IF NOT EXISTS subcategories (
+                        id SERIAL PRIMARY KEY,
+                        subcat_id TEXT UNIQUE NOT NULL,
+                        parent_cat_id TEXT NOT NULL,
+                        name_ru TEXT NOT NULL,
+                        name_uk TEXT,
+                        name_en TEXT,
+                        photo_url TEXT,
+                        sort_order INTEGER DEFAULT 0,
+                        created_at TEXT,
+                        updated_at TEXT
+                    )""",
+                    commit=True
+                )
             else:
                 cols = self.execute("PRAGMA table_info(categories)", fetch=True) or []
                 col_names = {row[1] for row in cols}
@@ -427,12 +472,130 @@ class Database:
                     ("description_ru", "TEXT"),
                     ("description_uk", "TEXT"),
                     ("description_en", "TEXT"),
+                    ("subcategory", "TEXT"),
                 ]
                 for col_name, col_type in missing:
                     if col_name not in prod_col_names:
                         self.execute(f"ALTER TABLE products ADD COLUMN {col_name} {col_type}", commit=True)
+
+                self.execute(
+                    """CREATE TABLE IF NOT EXISTS subcategories (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        subcat_id TEXT UNIQUE NOT NULL,
+                        parent_cat_id TEXT NOT NULL,
+                        name_ru TEXT NOT NULL,
+                        name_uk TEXT,
+                        name_en TEXT,
+                        photo_url TEXT,
+                        sort_order INTEGER DEFAULT 0,
+                        created_at TEXT,
+                        updated_at TEXT
+                    )""",
+                    commit=True
+                )
+
+            self._bootstrap_default_hierarchy_if_needed()
         except Exception as e:
             logger.warning(f"Schema compatibility migration skipped: {e}")
+
+    def _bootstrap_default_hierarchy_if_needed(self):
+        """One-time bootstrap: group legacy flat categories under 'grailed' and migrate products."""
+        try:
+            if self.get_setting('category_hierarchy_v1_done') == '1':
+                return
+        except Exception:
+            # If settings table isn't ready, skip.
+            return
+
+        try:
+            sub_count = self.execute("SELECT COUNT(*) as count FROM subcategories", fetch=True)
+            if sub_count:
+                cnt = sub_count[0]['count'] if self.use_postgres else sub_count[0][0]
+                if cnt and cnt > 0:
+                    self.set_setting('category_hierarchy_v1_done', '1')
+                    return
+        except Exception:
+            return
+
+        legacy_subcats = ['grailed_accounts', 'paypal', 'call_service', 'grailed_likes', 'ebay']
+
+        try:
+            cats = self.execute(
+                "SELECT cat_id, name_ru, name_uk, name_en, sort_order FROM categories",
+                fetch=True
+            ) or []
+            if not cats:
+                return
+
+            existing_ids = {row['cat_id'] if self.use_postgres else row[0] for row in cats}
+            if not set(legacy_subcats).issubset(existing_ids):
+                self.set_setting('category_hierarchy_v1_done', '1')
+                return
+
+            now = datetime.now().isoformat()
+
+            # Ensure root categories exist.
+            if 'grailed' not in existing_ids:
+                self.execute(
+                    """INSERT INTO categories
+                       (cat_id, name_ru, name_uk, name_en, photo_url, sort_order, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    ('grailed', '📂 Grailed', '📂 Grailed', '📂 Grailed', None, 0, now, now),
+                    commit=True
+                )
+
+            if 'support' not in existing_ids and 'support' in DEFAULT_CATEGORIES:
+                s = DEFAULT_CATEGORIES['support']
+                self.execute(
+                    """INSERT INTO categories
+                       (cat_id, name_ru, name_uk, name_en, photo_url, sort_order, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    ('support', s.get('ru') or 'Support', s.get('uk'), s.get('en'), None, 999, now, now),
+                    commit=True
+                )
+
+            for cat_id in legacy_subcats:
+                row = next((r for r in cats if (r['cat_id'] if self.use_postgres else r[0]) == cat_id), None)
+                if not row:
+                    continue
+                if self.use_postgres:
+                    name_ru = row.get('name_ru')
+                    name_uk = row.get('name_uk')
+                    name_en = row.get('name_en')
+                    sort_order = row.get('sort_order') or 0
+                else:
+                    name_ru = row[1]
+                    name_uk = row[2]
+                    name_en = row[3]
+                    sort_order = row[4] if len(row) > 4 else 0
+
+                exists = self.execute(
+                    "SELECT subcat_id FROM subcategories WHERE subcat_id = ?",
+                    (cat_id,),
+                    fetch=True
+                )
+                if not exists:
+                    self.execute(
+                        """INSERT INTO subcategories
+                           (subcat_id, parent_cat_id, name_ru, name_uk, name_en, photo_url, sort_order, created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (cat_id, 'grailed', name_ru, name_uk, name_en, None, sort_order, now, now),
+                        commit=True
+                    )
+
+                # Move products: category -> grailed, store old in subcategory.
+                self.execute(
+                    "UPDATE products SET category = ?, subcategory = ? WHERE category = ?",
+                    ('grailed', cat_id, cat_id),
+                    commit=True
+                )
+
+                # Remove old root category so it doesn't show in the main menu.
+                self.execute("DELETE FROM categories WHERE cat_id = ?", (cat_id,), commit=True)
+
+            self.set_setting('category_hierarchy_v1_done', '1')
+        except Exception as e:
+            logger.warning(f"Could not bootstrap category hierarchy: {e}")
 
     def seed_default_categories(self):
         """Автозаполнение категорий, если таблица пустая."""
@@ -445,16 +608,34 @@ class Database:
                 return
 
             now = datetime.now().isoformat()
-            sort_order = 0
-            for cat_id, names in DEFAULT_CATEGORIES.items():
+
+            # Root categories
+            roots = [
+                ('grailed', {'ru': '📂 Grailed', 'uk': '📂 Grailed', 'en': '📂 Grailed'}, 0),
+                ('support', DEFAULT_CATEGORIES.get('support') or {'ru': '🆘 Support', 'uk': '🆘 Support', 'en': '🆘 Support'}, 999),
+            ]
+            for cat_id, names, sort_order in roots:
                 self.execute(
                     """INSERT INTO categories
                        (cat_id, name_ru, name_uk, name_en, photo_url, sort_order, created_at, updated_at)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (cat_id, names['ru'], names['uk'], names['en'], None, sort_order, now, now),
+                    (cat_id, names.get('ru'), names.get('uk'), names.get('en'), None, sort_order, now, now),
                     commit=True
                 )
-                sort_order += 10
+
+            # Default subcategories for Grailed (legacy defaults except support)
+            sub_sort = 0
+            for subcat_id, names in DEFAULT_CATEGORIES.items():
+                if subcat_id == 'support':
+                    continue
+                self.execute(
+                    """INSERT INTO subcategories
+                       (subcat_id, parent_cat_id, name_ru, name_uk, name_en, photo_url, sort_order, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (subcat_id, 'grailed', names.get('ru'), names.get('uk'), names.get('en'), None, sub_sort, now, now),
+                    commit=True
+                )
+                sub_sort += 10
             logger.info("Default categories seeded")
         except Exception as e:
             logger.warning(f"Could not seed default categories: {e}")
@@ -486,12 +667,14 @@ class Database:
                 now = datetime.now().isoformat()
                 name_i18n = build_i18n_triplet(name, source_lang='ru')
                 desc_i18n = build_i18n_triplet(desc, source_lang='ru')
+                root_cat = 'support' if cat == 'support' else 'grailed'
+                subcat = None if cat == 'support' else cat
                 self.execute(
                     """INSERT INTO products 
-                       (category, name, name_ru, name_uk, name_en, price_usd, description, description_ru, description_uk, description_en, stock, sort_order, created_at, updated_at) 
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       (category, subcategory, name, name_ru, name_uk, name_en, price_usd, description, description_ru, description_uk, description_en, stock, sort_order, created_at, updated_at) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
-                        cat, name, name_i18n['ru'], name_i18n['uk'], name_i18n['en'],
+                        root_cat, subcat, name, name_i18n['ru'], name_i18n['uk'], name_i18n['en'],
                         price, desc, desc_i18n['ru'], desc_i18n['uk'], desc_i18n['en'],
                         stock, order, now, now
                     ),
@@ -714,18 +897,25 @@ class Database:
             logger.error(f"Failed to transfer balance from {sender_id}: {e}")
             return False, str(e), None
     
-    def get_products(self, category: Optional[str] = None, 
+    def get_products(self, category: Optional[str] = None,
+                    subcategory: Optional[str] = None,
                     show_all: bool = False, lang: str = 'ru') -> List[dict]:
         if category:
+            params: list = [category]
+            where = "WHERE category = ?"
+            if subcategory is not None:
+                where += " AND subcategory = ?"
+                params.append(subcategory)
+
             if show_all:
-                query = """SELECT * FROM products 
-                          WHERE category = ? 
+                query = f"""SELECT * FROM products
+                          {where}
                           ORDER BY sort_order, name"""
             else:
-                query = """SELECT * FROM products 
-                          WHERE category = ? AND is_active = 1 
+                query = f"""SELECT * FROM products
+                          {where} AND is_active = 1
                           ORDER BY sort_order, name"""
-            results = self.execute(query, (category,), fetch=True)
+            results = self.execute(query, tuple(params), fetch=True)
         else:
             if show_all:
                 query = "SELECT * FROM products ORDER BY category, sort_order, name"
@@ -758,7 +948,8 @@ class Database:
             row['description'] = localized_desc
         return row
     
-    def add_product(self, category: str, name: str, price: float, 
+    def add_product(self, category: str, name: str, price: float,
+                   subcategory: Optional[str] = None,
                    description: Optional[str] = None, stock: int = -1, 
                    sort_order: int = 0, photo_url: Optional[str] = None,
                    input_lang: str = 'ru') -> bool:
@@ -768,10 +959,10 @@ class Database:
             desc_i18n = build_i18n_triplet(description, source_lang=input_lang) if description else {'ru': None, 'uk': None, 'en': None}
             self.execute(
                 """INSERT INTO products 
-                   (category, name, name_ru, name_uk, name_en, price_usd, description, description_ru, description_uk, description_en, stock, sort_order, photo_url, created_at, updated_at) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (category, subcategory, name, name_ru, name_uk, name_en, price_usd, description, description_ru, description_uk, description_en, stock, sort_order, photo_url, created_at, updated_at) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    category, name, name_i18n['ru'], name_i18n['uk'], name_i18n['en'],
+                    category, subcategory, name, name_i18n['ru'], name_i18n['uk'], name_i18n['en'],
                     price, description, desc_i18n['ru'], desc_i18n['uk'], desc_i18n['en'],
                     stock, sort_order, photo_url, now, now
                 ),
@@ -786,7 +977,7 @@ class Database:
     
     def update_product(self, product_id: int, **kwargs) -> bool:
         input_lang = kwargs.pop('input_lang', 'ru')
-        allowed = ['category', 'name', 'price_usd', 'description', 
+        allowed = ['category', 'subcategory', 'name', 'price_usd', 'description',
                   'stock', 'sort_order', 'is_active', 'photo_url',
                   'name_ru', 'name_uk', 'name_en', 'description_ru', 'description_uk', 'description_en']
 
@@ -875,6 +1066,166 @@ class Database:
         except Exception as e:
             logger.error(f"Error getting categories: {e}")
             return {cat_id: (names.get(lang) or names['ru']) for cat_id, names in DEFAULT_CATEGORIES.items()}
+
+    def get_subcategories(self, parent_cat_id: str, lang: str = 'ru') -> Dict[str, str]:
+        """Получить подкатегории для выбранной категории."""
+        try:
+            result = self.execute(
+                """SELECT subcat_id, name_ru, name_uk, name_en
+                   FROM subcategories
+                   WHERE parent_cat_id = ?
+                   ORDER BY sort_order, subcat_id""",
+                (parent_cat_id,),
+                fetch=True
+            )
+            subcats: Dict[str, str] = {}
+            for row in result or []:
+                if self.use_postgres:
+                    subcat_id = row['subcat_id']
+                    name_ru = row.get('name_ru')
+                    name_uk = row.get('name_uk')
+                    name_en = row.get('name_en')
+                else:
+                    subcat_id = row[0]
+                    name_ru = row[1]
+                    name_uk = row[2]
+                    name_en = row[3]
+
+                if lang == 'uk' and name_uk:
+                    name = name_uk
+                elif lang == 'en' and name_en:
+                    name = name_en
+                else:
+                    name = name_ru
+
+                subcats[subcat_id] = name
+            return subcats
+        except Exception as e:
+            logger.error(f"Error getting subcategories for {parent_cat_id}: {e}")
+            return {}
+
+    def get_all_subcategories(self) -> List[dict]:
+        try:
+            result = self.execute(
+                """SELECT subcat_id, parent_cat_id, name_ru, name_uk, name_en, sort_order
+                   FROM subcategories
+                   ORDER BY parent_cat_id, sort_order, subcat_id""",
+                fetch=True
+            )
+            return [dict(r) for r in result] if result else []
+        except Exception as e:
+            logger.error(f"Error getting all subcategories: {e}")
+            return []
+
+    def get_subcategory(self, subcat_id: str) -> Optional[dict]:
+        try:
+            result = self.execute(
+                """SELECT subcat_id, parent_cat_id, name_ru, name_uk, name_en, photo_url, sort_order
+                   FROM subcategories
+                   WHERE subcat_id = ?""",
+                (subcat_id,),
+                fetch=True
+            )
+            if not result:
+                return None
+            row = result[0]
+            if self.use_postgres:
+                return dict(row)
+            return {
+                'subcat_id': row[0],
+                'parent_cat_id': row[1],
+                'name_ru': row[2],
+                'name_uk': row[3],
+                'name_en': row[4],
+                'photo_url': row[5] if len(row) > 5 else None,
+                'sort_order': row[6] if len(row) > 6 else 0,
+            }
+        except Exception as e:
+            logger.error(f"Failed to get subcategory {subcat_id}: {e}")
+            return None
+
+    def add_subcategory(
+        self,
+        subcat_id: str,
+        parent_cat_id: str,
+        name_ru: str,
+        name_uk: str = None,
+        name_en: str = None,
+        sort_order: int = 0,
+        photo_url: str = None,
+    ) -> bool:
+        now = datetime.now().isoformat()
+        try:
+            self.execute(
+                """INSERT INTO subcategories
+                   (subcat_id, parent_cat_id, name_ru, name_uk, name_en, photo_url, sort_order, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (subcat_id, parent_cat_id, name_ru, name_uk, name_en, photo_url, sort_order, now, now),
+                commit=True
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add subcategory {subcat_id}: {e}")
+            return False
+
+    def update_subcategory(
+        self,
+        subcat_id: str,
+        parent_cat_id: str = None,
+        name_ru: str = None,
+        name_uk: str = None,
+        name_en: str = None,
+        photo_url: str = None,
+    ) -> bool:
+        now = datetime.now().isoformat()
+        updates = []
+        params = []
+
+        for key, value in [
+            ('parent_cat_id', parent_cat_id),
+            ('name_ru', name_ru),
+            ('name_uk', name_uk),
+            ('name_en', name_en),
+            ('photo_url', photo_url),
+        ]:
+            if value is not None:
+                updates.append(f"{key} = ?")
+                params.append(value)
+
+        if not updates:
+            return False
+
+        updates.append("updated_at = ?")
+        params.append(now)
+        params.append(subcat_id)
+        try:
+            self.execute(
+                f"UPDATE subcategories SET {', '.join(updates)} WHERE subcat_id = ?",
+                tuple(params),
+                commit=True
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update subcategory {subcat_id}: {e}")
+            return False
+
+    def delete_subcategory(self, subcat_id: str) -> Tuple[bool, str]:
+        try:
+            products = self.execute(
+                "SELECT COUNT(*) as count FROM products WHERE subcategory = ?",
+                (subcat_id,),
+                fetch=True
+            )
+            if products:
+                count = products[0]['count'] if self.use_postgres else products[0][0]
+                if count and count > 0:
+                    return False, f"Нельзя удалить: в подкатегории {count} товаров"
+
+            self.execute("DELETE FROM subcategories WHERE subcat_id = ?", (subcat_id,), commit=True)
+            return True, "Подкатегория удалена"
+        except Exception as e:
+            logger.error(f"Failed to delete subcategory {subcat_id}: {e}")
+            return False, str(e)
 
     def get_setting(self, key: str, default: Optional[str] = None) -> Optional[str]:
         try:

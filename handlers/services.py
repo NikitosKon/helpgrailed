@@ -61,6 +61,20 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
         return
     
     try:
+        subcats = db.get_subcategories(category, lang=user_lang)
+        if subcats:
+            categories = db.get_categories(user_lang)
+            cat_name = categories.get(category, category)
+            text = f"{cat_name}\n\n{get_text('choose_subcategory', user.id)}"
+
+            keyboard = []
+            for subcat_id, subcat_name in subcats.items():
+                keyboard.append([InlineKeyboardButton(subcat_name, callback_data=f"subcat_{category}_{subcat_id}")])
+            keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data='services')])
+
+            await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+
         items = db.get_products(category, lang=user_lang)
         
         if not items:
@@ -114,6 +128,60 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(get_text('back', user.id), callback_data='services')]])
         )
 
+async def handle_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE, category: str, subcategory: str):
+    """Показать товары в подкатегории."""
+    query = update.callback_query
+    user = query.from_user
+
+    user_data = db.get_user(user.id) or {}
+    user_lang = user_data.get('language', 'ru')
+
+    try:
+        items = db.get_products(category, subcategory=subcategory, lang=user_lang)
+
+        categories = db.get_categories(user_lang)
+        cat_name = categories.get(category, category)
+        subcats = db.get_subcategories(category, lang=user_lang)
+        sub_name = subcats.get(subcategory, subcategory)
+
+        if not items:
+            await _edit_or_send(
+                query,
+                f"{get_text('no_items', user.id)}\n\n{cat_name} / {sub_name}",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(get_text('back', user.id), callback_data=f'cat_{category}')]])
+            )
+            return
+
+        text = f"{cat_name} / {sub_name}\n\n{get_text('choose_item', user.id)}"
+        keyboard = []
+
+        for item in items:
+            if isinstance(item, dict):
+                pid = item.get('id')
+                name = item.get('name', 'Без названия')
+                price = item.get('price_usd', 0)
+                stock = item.get('stock', -1)
+            else:
+                pid = item[0]
+                name = item[2]
+                price = item[3]
+                stock = item[5]
+
+            stock_str = '∞' if stock < 0 else str(stock)
+            btn_text = f"{name} — ${price:.0f} ({get_text('in_stock', user.id)}: {stock_str})"
+            keyboard.append([InlineKeyboardButton(btn_text, callback_data=f'prod_{pid}')])
+
+        keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data=f'cat_{category}')])
+        await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard))
+    except Exception as e:
+        logger.error(f"Ошибка в подкатегории {category}/{subcategory}: {e}")
+        await _edit_or_send(
+            query,
+            "❌ Ошибка загрузки товаров",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(get_text('back', user.id), callback_data=f'cat_{category}')]])
+        )
+
+
 async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id):
     """Показать информацию о товаре"""
     query = update.callback_query
@@ -129,6 +197,7 @@ async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
     if isinstance(prod, dict):
         name = prod.get('name', 'Без названия')
         cat = prod.get('category', '')
+        subcat = prod.get('subcategory')
         price = prod.get('price_usd', 0)
         desc = prod.get('description', 'Описание отсутствует')
         stock = prod.get('stock', -1)
@@ -136,6 +205,7 @@ async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
     else:
         name = prod[2]
         cat = prod[1]
+        subcat = None
         price = prod[3]
         desc = prod[4] or 'Описание отсутствует'
         stock = prod[5]
@@ -152,10 +222,13 @@ async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
         f"💳 Ваш баланс: <b>${balance:.2f}</b>"
     )
     
+    back_cb = f"subcat_{cat}_{subcat}" if subcat else f"cat_{cat}"
+
     keyboard = [
         [InlineKeyboardButton(f"✅ Купить за ${price:.2f}", callback_data=f'buy_{product_id}')],
         [InlineKeyboardButton("◀️ Назад к категории", callback_data=f'cat_{cat}')],
         [InlineKeyboardButton("🏠 Главное меню", callback_data='menu')]
+        [InlineKeyboardButton("◀️ Назад", callback_data=back_cb)],
     ]
     
     if photo_url and os.path.exists(photo_url):
@@ -189,10 +262,12 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
         product_name = prod.get('name', 'Товар')
         product_price = prod.get('price_usd', 0)
         product_category = prod.get('category', '')
+        product_subcategory = prod.get('subcategory')
     else:
         product_name = prod[2]
         product_price = prod[3]
         product_category = prod[1]
+        product_subcategory = None
     
     success, message, product_data = db.purchase(user.id, product_id)
     

@@ -118,10 +118,10 @@ async def handle_custom_deposit(update: Update, context: ContextTypes.DEFAULT_TY
     try:
         amount = float(text)
         if amount < 1:
-            await update.message.reply_text("❌ Минимальная сумма - 1")
+            await update.message.reply_text(get_text('min_deposit', user.id))
             return
         if amount > 10000:
-            await update.message.reply_text("❌ Максимальная сумма - 10000")
+            await update.message.reply_text(get_text('max_deposit', user.id))
             return
         
         db.clear_pending_action(user.id)
@@ -176,8 +176,8 @@ async def handle_custom_deposit(update: Update, context: ContextTypes.DEFAULT_TY
         )
         
         if promo_info:
-            text += f"💸 Скидка по промокоду: ${promo_info['discount']}\n"
-            text += f"💰 Было: ${amount}\n"
+            text += f"{get_text('promo_discount', user.id)}: ${promo_info['discount']}\n"
+            text += f"{get_text('promo_was', user.id)}: ${amount}\n"
         
         text += f"🔗 <a href='{invoice['pay_url']}'>Перейти к оплате</a>\n\n"
         text += f"⏳ После оплаты баланс обновится автоматически"
@@ -192,10 +192,10 @@ async def handle_custom_deposit(update: Update, context: ContextTypes.DEFAULT_TY
         )
         
     except ValueError:
-        await update.message.reply_text("❌ Введите число (например: 25)")
+        await update.message.reply_text(get_text('invalid_number', user.id))
     except Exception as e:
         logger.error(f"Ошибка: {e}")
-        await update.message.reply_text("❌ Ошибка при создании счёта")
+        await update.message.reply_text(get_text('invoice_create_error', user.id))
 
 async def create_deposit_invoice(query, user, currency, amount, context):
     """Создание инвойса для депозита"""
@@ -216,7 +216,7 @@ async def create_deposit_invoice(query, user, currency, amount, context):
         invoice = await create_crypto_invoice(
             amount=final_amount,
             currency=currency,
-            description=f"Пополнение баланса на {final_amount} {currency}",
+            description=f"Deposit {final_amount} {currency}",
             payload=f"{user.id}:deposit:{currency}"
         )
         
@@ -245,18 +245,18 @@ async def create_deposit_invoice(query, user, currency, amount, context):
         
         currency_name = CRYPTO_CURRENCIES.get(currency, currency)
         text = (
-            f"🧾 <b>Счёт создан</b>\n\n"
-            f"💰 Сумма: {final_amount} {currency_name}\n"
+            f"🧾 <b>{get_text('invoice_created', user.id)}</b>\n\n"
+            f"💰 {get_text('invoice_amount', user.id)}: {final_amount} {currency_name}\n"
         )
         
         if promo_info:
             text += f"💸 Скидка по промокоду: ${promo_info['discount']}\n"
             text += f"💰 Было: ${amount}\n"
         
-        text += f"🔗 <a href='{invoice['pay_url']}'>Перейти к оплате</a>\n\n"
-        text += f"⏳ После оплаты баланс обновится автоматически"
+        text += f"🔗 <a href='{invoice['pay_url']}'>{get_text('invoice_pay', user.id)}</a>\n\n"
+        text += f"{get_text('invoice_after', user.id)}"
         
-        keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data='menu')]]
+        keyboard = [[InlineKeyboardButton(get_text('main_menu', user.id), callback_data='menu')]]
         
         await _edit_or_send(query, 
             text,
@@ -267,7 +267,7 @@ async def create_deposit_invoice(query, user, currency, amount, context):
     except Exception as e:
         logger.error(f"Ошибка: {e}")
         await _edit_or_send(query, 
-            f"❌ Ошибка при создании счёта. Попробуйте позже."
+            get_text('invoice_create_error', user.id)
         )
 
 async def handle_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -277,10 +277,10 @@ async def handle_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balance = db.get_balance(user.id)
     
     text = (
-        f"💸 <b>Вывод средств</b>\n\n"
-        f"Доступно: ${balance:.2f}\n\n"
-        f"Для вывода напишите администратору: {ADMIN_CONTACT}\n\n"
-        f"<i>Вывод возможен от 10 USDT. Комиссия - 5%</i>"
+        f"💸 <b>{get_text('withdraw_title', user.id)}</b>\n\n"
+        f"{get_text('withdraw_available', user.id)}: ${balance:.2f}\n\n"
+        f"{get_text('withdraw_contact', user.id)}: {ADMIN_CONTACT}\n\n"
+        f"<i>{get_text('withdraw_rules', user.id)}</i>"
     )
     await _edit_or_send(query, 
         text,

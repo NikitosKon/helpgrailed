@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes
 
 from database import db
 from handlers.start import start_command
-from handlers.services import handle_services, handle_category, handle_product, handle_buy
+from handlers.services import handle_services, handle_category, handle_subcategory, handle_product, handle_buy
 from handlers.payments import (
     handle_balance, handle_deposit, handle_withdraw,
     handle_currency_selection, handle_amount_selection,
@@ -67,6 +67,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await handle_services(update, context)
     elif data.startswith('cat_'):
         await handle_category(update, context, data[4:])
+    elif data.startswith('subcat_'):
+        payload = data[len('subcat_'):]
+        if '_' not in payload:
+            await query.edit_message_text("Некорректная подкатегория")
+        else:
+            cat_id, subcat_id = payload.split('_', 1)
+            await handle_subcategory(update, context, cat_id, subcat_id)
     elif data.startswith('prod_'):
         try:
             product_id = int(data[5:])
@@ -350,16 +357,27 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await handle_admin_add_category_input(update, context, action, text)
         return
 
+    if action.startswith('admin_add_subcategory_'):
+        from handlers.admin import handle_admin_add_subcategory_input
+        await handle_admin_add_subcategory_input(update, context, action, text)
+        return
+
     # Редактирование категории (ru/uk/en шаги)
     if action.startswith('admin_edit_category_'):
         from handlers.admin import handle_admin_edit_category_input
         await handle_admin_edit_category_input(update, context, action, text)
         return
 
+    if action.startswith('admin_edit_subcategory_'):
+        from handlers.admin import handle_admin_edit_subcategory_input
+        await handle_admin_edit_subcategory_input(update, context, action, text)
+        return
+
     # Добавление товара — шаги wizard
     add_product_actions = {
         'admin_add_product_name',
         'admin_add_product_category',
+        'admin_add_product_subcategory',
         'admin_add_product_price',
         'admin_add_product_desc',
         'admin_add_product_photo_waiting',
