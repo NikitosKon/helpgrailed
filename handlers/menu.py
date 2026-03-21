@@ -60,6 +60,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     # Основная навигация
+    if data == 'noop':
+        return
     if data in ('menu', 'back'):
         await start_command(update, context)
 

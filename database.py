@@ -1230,6 +1230,17 @@ class Database:
             logger.error(f"Error getting categories: {e}")
             return {cat_id: (names.get(lang) or names['ru']) for cat_id, names in DEFAULT_ROOT_CATEGORIES.items()}
 
+    def get_all_categories(self) -> List[dict]:
+        try:
+            result = self.execute(
+                "SELECT cat_id, name_ru, name_uk, name_en, photo_url, sort_order FROM categories ORDER BY sort_order, cat_id",
+                fetch=True
+            )
+            return [dict(r) for r in result] if result else []
+        except Exception as e:
+            logger.error(f"Error getting all categories: {e}")
+            return []
+
     def get_subcategories(self, parent_cat_id: str, lang: str = 'ru') -> Dict[str, str]:
         """Получить подкатегории для выбранной категории."""
         try:
@@ -1370,6 +1381,38 @@ class Database:
             return True
         except Exception as e:
             logger.error(f"Failed to update subcategory {subcat_id}: {e}")
+            return False
+
+    def move_subcategory(self, subcat_id: str, direction: str) -> bool:
+        try:
+            current = self.get_subcategory(subcat_id)
+            if not current:
+                return False
+
+            siblings = [s for s in self.get_all_subcategories() if s.get('parent_cat_id') == current.get('parent_cat_id')]
+            index = next((i for i, s in enumerate(siblings) if s.get('subcat_id') == subcat_id), None)
+            if index is None:
+                return False
+
+            target_index = index - 1 if direction == 'up' else index + 1 if direction == 'down' else None
+            if target_index is None or target_index < 0 or target_index >= len(siblings):
+                return False
+
+            target = siblings[target_index]
+            now = datetime.now().isoformat()
+            self.execute(
+                "UPDATE subcategories SET sort_order = ?, updated_at = ? WHERE subcat_id = ?",
+                (target_index, now, current['subcat_id']),
+                commit=True
+            )
+            self.execute(
+                "UPDATE subcategories SET sort_order = ?, updated_at = ? WHERE subcat_id = ?",
+                (index, now, target['subcat_id']),
+                commit=True
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to move subcategory {subcat_id}: {e}")
             return False
 
     def delete_subcategory(self, subcat_id: str) -> Tuple[bool, str]:
@@ -1656,6 +1699,48 @@ class Database:
             return True
         except Exception as e:
             logger.error(f"Failed to update category {cat_id}: {e}")
+            return False
+
+    def move_category(self, cat_id: str, direction: str) -> bool:
+        try:
+            categories = self.get_all_categories()
+            index = next((i for i, c in enumerate(categories) if c.get('cat_id') == cat_id), None)
+            if index is None:
+                return False
+
+            target_index = index - 1 if direction == 'up' else index + 1 if direction == 'down' else None
+            if target_index is None or target_index < 0 or target_index >= len(categories):
+                return False
+
+            current = categories[index]
+            target = categories[target_index]
+            now = datetime.now().isoformat()
+
+            if self.use_postgres:
+                self.execute(
+                    "UPDATE categories SET sort_order = %s, updated_at = %s WHERE cat_id = %s",
+                    (target_index, now, current['cat_id']),
+                    commit=True
+                )
+                self.execute(
+                    "UPDATE categories SET sort_order = %s, updated_at = %s WHERE cat_id = %s",
+                    (index, now, target['cat_id']),
+                    commit=True
+                )
+            else:
+                self.execute(
+                    "UPDATE categories SET sort_order = ?, updated_at = ? WHERE cat_id = ?",
+                    (target_index, now, current['cat_id']),
+                    commit=True
+                )
+                self.execute(
+                    "UPDATE categories SET sort_order = ?, updated_at = ? WHERE cat_id = ?",
+                    (index, now, target['cat_id']),
+                    commit=True
+                )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to move category {cat_id}: {e}")
             return False
     
     def delete_category(self, cat_id: str) -> Tuple[bool, str]:

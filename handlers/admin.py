@@ -141,6 +141,12 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
         await admin_subcategories_menu(update, context)
     elif data == 'admin_list_subcategories':
         await admin_list_subcategories(update, context)
+    elif data == 'admin_sort_subcategories':
+        await admin_sort_subcategories(update, context)
+    elif data.startswith('admin_move_subcat_'):
+        payload = data.replace('admin_move_subcat_', '', 1)
+        direction, subcat_id = payload.split('_', 1)
+        await admin_move_subcategory(update, context, subcat_id, direction)
     elif data == 'admin_add_subcategory':
         await admin_add_subcategory_start(update, context)
     elif data == 'admin_edit_subcategory':
@@ -156,6 +162,12 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
 
     elif data == 'admin_list_categories':
         await admin_list_categories(update, context)
+    elif data == 'admin_sort_categories':
+        await admin_sort_categories(update, context)
+    elif data.startswith('admin_move_cat_'):
+        payload = data.replace('admin_move_cat_', '', 1)
+        direction, cat_id = payload.split('_', 1)
+        await admin_move_category(update, context, cat_id, direction)
 
     elif data == 'admin_add_category':
         await admin_add_category_start(update, context)
@@ -1108,6 +1120,7 @@ async def admin_categories_menu(update: Update, context: ContextTypes.DEFAULT_TY
     
     keyboard = [
         [InlineKeyboardButton("📋 Список категорий", callback_data='admin_list_categories')],
+        [InlineKeyboardButton("↕️ Сортировка категорий", callback_data='admin_sort_categories')],
         [InlineKeyboardButton("📁 Подкатегории", callback_data='admin_subcategories_menu')],
         [InlineKeyboardButton("➕ Добавить категорию", callback_data='admin_add_category')],
         [InlineKeyboardButton("✏️ Редактировать категорию", callback_data='admin_edit_category')],
@@ -1128,6 +1141,7 @@ async def admin_subcategories_menu(update: Update, context: ContextTypes.DEFAULT
 
     keyboard = [
         [InlineKeyboardButton("📋 Список подкатегорий", callback_data='admin_list_subcategories')],
+        [InlineKeyboardButton("↕️ Сортировка подкатегорий", callback_data='admin_sort_subcategories')],
         [InlineKeyboardButton("➕ Добавить подкатегорию", callback_data='admin_add_subcategory')],
         [InlineKeyboardButton("✏️ Редактировать подкатегорию", callback_data='admin_edit_subcategory')],
         [InlineKeyboardButton("❌ Удалить подкатегорию", callback_data='admin_delete_subcategory')],
@@ -1168,6 +1182,54 @@ async def admin_list_subcategories(update: Update, context: ContextTypes.DEFAULT
 
     keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin_subcategories_menu')]]
     await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+
+
+async def admin_sort_subcategories(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+
+    subcats = db.get_all_subcategories()
+    categories_ru = db.get_categories('ru')
+
+    if not subcats:
+        await _edit_or_send(
+            query,
+            "📭 Подкатегорий нет",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_subcategories_menu')]])
+        )
+        return
+
+    keyboard = []
+    current_parent = None
+    for subcat in subcats:
+        parent_id = subcat.get('parent_cat_id')
+        if parent_id != current_parent:
+            current_parent = parent_id
+            parent_name = categories_ru.get(parent_id, parent_id)
+            keyboard.append([InlineKeyboardButton(f"— {parent_name} —", callback_data='noop')])
+
+        name = subcat.get('name_ru') or subcat.get('subcat_id')
+        subcat_id = subcat.get('subcat_id')
+        keyboard.append([
+            InlineKeyboardButton("⬆️", callback_data=f'admin_move_subcat_up_{subcat_id}'),
+            InlineKeyboardButton(f"{name}", callback_data='noop'),
+            InlineKeyboardButton("⬇️", callback_data=f'admin_move_subcat_down_{subcat_id}')
+        ])
+
+    keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_subcategories_menu')])
+    await _edit_or_send(
+        query,
+        "↕️ <b>Сортировка подкатегорий</b>\n\nИспользуйте кнопки ⬆️ и ⬇️ для изменения порядка.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )
+
+
+async def admin_move_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE, subcat_id: str, direction: str):
+    query = update.callback_query
+    ok = db.move_subcategory(subcat_id, direction)
+    if not ok:
+        await query.answer("Нельзя переместить подкатегорию", show_alert=False)
+    await admin_sort_subcategories(update, context)
 
 
 async def admin_add_subcategory_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1449,6 +1511,45 @@ async def admin_list_categories(update: Update, context: ContextTypes.DEFAULT_TY
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='HTML'
     )
+
+
+async def admin_sort_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    categories = db.get_all_categories()
+
+    if not categories:
+        await _edit_or_send(
+            query,
+            "📭 Категорий нет",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')]])
+        )
+        return
+
+    keyboard = []
+    for category in categories:
+        cat_id = category.get('cat_id')
+        name = category.get('name_ru') or cat_id
+        keyboard.append([
+            InlineKeyboardButton("⬆️", callback_data=f'admin_move_cat_up_{cat_id}'),
+            InlineKeyboardButton(name, callback_data='noop'),
+            InlineKeyboardButton("⬇️", callback_data=f'admin_move_cat_down_{cat_id}')
+        ])
+
+    keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')])
+    await _edit_or_send(
+        query,
+        "↕️ <b>Сортировка категорий</b>\n\nИспользуйте кнопки ⬆️ и ⬇️ для изменения порядка.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )
+
+
+async def admin_move_category(update: Update, context: ContextTypes.DEFAULT_TYPE, cat_id: str, direction: str):
+    query = update.callback_query
+    ok = db.move_category(cat_id, direction)
+    if not ok:
+        await query.answer("Нельзя переместить категорию", show_alert=False)
+    await admin_sort_categories(update, context)
 
 
 async def admin_add_category_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
