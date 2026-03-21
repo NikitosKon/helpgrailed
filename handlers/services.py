@@ -56,7 +56,13 @@ async def _edit_or_send_with_core_photo(query, text, core_key: str, reply_markup
 
 
 def _stock_str(stock: int) -> str:
-    return '∞' if stock < 0 else str(stock)
+    return 'в€ћ' if stock < 0 else str(stock)
+
+
+def _product_button_text(name: str, price: float, stock: int, user_id: int) -> str:
+    if price is not None and price < 0:
+        return f"{name} — {get_text('details_button', user_id)}"
+    return f"{name} — ${price:.0f} ({get_text('in_stock', user_id)}: {_stock_str(stock)})"
 
 
 async def handle_services(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -80,7 +86,7 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
     logger.info(f"Category selected: {category}")
 
     if category == 'support':
-        text = "🆘 Technical support\n\nContact us here:"
+        text = f"{get_text('support_title', user.id)}\n\n{get_text('support_contact_text', user.id)}"
         keyboard = [
             [InlineKeyboardButton(SUPPORT_CONTACT, url=f"https://t.me/{SUPPORT_CONTACT.replace('@', '')}")],
             [InlineKeyboardButton(get_text('back', user.id), callback_data='services')]
@@ -131,7 +137,7 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
         for item in items:
             if isinstance(item, dict):
                 pid = item.get('id')
-                name = item.get('name', 'Без названия')
+                name = item.get('name', 'Р‘РµР· РЅР°Р·РІР°РЅРёСЏ')
                 price = item.get('price_usd', 0)
                 stock = item.get('stock', -1)
             else:
@@ -140,7 +146,7 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
                 price = item[3]
                 stock = item[5]
 
-            btn_text = f"{name} — ${price:.0f} ({get_text('in_stock', user.id)}: {_stock_str(stock)})"
+            btn_text = _product_button_text(name, price, stock, user.id)
             keyboard.append([InlineKeyboardButton(btn_text, callback_data=f'prod_{pid}')])
 
         keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data='services')])
@@ -159,7 +165,7 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
         logger.error(f"Error in category {category}: {e}")
         await _edit_or_send(
             query,
-            "❌ Error loading products",
+            "вќЊ Error loading products",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(get_text('back', user.id), callback_data='services')]])
         )
 
@@ -192,7 +198,7 @@ async def handle_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE,
         for item in items:
             if isinstance(item, dict):
                 pid = item.get('id')
-                name = item.get('name', 'Без названия')
+                name = item.get('name', 'Р‘РµР· РЅР°Р·РІР°РЅРёСЏ')
                 price = item.get('price_usd', 0)
                 stock = item.get('stock', -1)
             else:
@@ -201,7 +207,7 @@ async def handle_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 price = item[3]
                 stock = item[5]
 
-            btn_text = f"{name} — ${price:.0f} ({get_text('in_stock', user.id)}: {_stock_str(stock)})"
+            btn_text = _product_button_text(name, price, stock, user.id)
             keyboard.append([InlineKeyboardButton(btn_text, callback_data=f'prod_{pid}')])
 
         keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data=f'cat_{category}')])
@@ -210,7 +216,7 @@ async def handle_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE,
         logger.error(f"Error in subcategory {category}/{subcategory}: {e}")
         await _edit_or_send(
             query,
-            "❌ Error loading products",
+            "вќЊ Error loading products",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(get_text('back', user.id), callback_data=f'cat_{category}')]])
         )
 
@@ -223,15 +229,15 @@ async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
     user_lang = user_data.get('language', 'ru')
     prod = db.get_product(product_id, lang=user_lang)
     if not prod:
-        await _edit_or_send(query, "❌ Product not found.")
+        await _edit_or_send(query, "вќЊ Product not found.")
         return
 
     if isinstance(prod, dict):
-        name = prod.get('name', 'Без названия')
+        name = prod.get('name', 'Р‘РµР· РЅР°Р·РІР°РЅРёСЏ')
         cat = prod.get('category', '')
         subcat = prod.get('subcategory')
         price = prod.get('price_usd', 0)
-        desc = prod.get('description', 'Описание отсутствует')
+        desc = prod.get('description', 'РћРїРёСЃР°РЅРёРµ РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚')
         stock = prod.get('stock', -1)
         photo_url = prod.get('photo_url')
     else:
@@ -239,7 +245,7 @@ async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
         cat = prod[1]
         subcat = None
         price = prod[3]
-        desc = prod[4] or 'Описание отсутствует'
+        desc = prod[4] or 'РћРїРёСЃР°РЅРёРµ РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚'
         stock = prod[5]
         photo_url = prod[8] if len(prod) > 8 else None
 
@@ -250,26 +256,35 @@ async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
     if subcat:
         subcategory_name = db.get_subcategories(cat, lang=user_lang).get(subcat, subcat)
 
-    path_line = f"📂 {category_name}"
+    path_line = f"рџ“‚ {category_name}"
     if subcategory_name:
         path_line += f" / {subcategory_name}"
 
-    text = (
-        f"{path_line}\n\n"
-        f"<b>{name}</b>\n\n"
-        f"{desc}\n\n"
-        f"💰 Price: <b>${price:.2f}</b>\n"
-        f"📦 Stock: {_stock_str(stock)}\n"
-        f"💳 Your balance: <b>${balance:.2f}</b>\n\n"
-        f"Tap the button below to purchase this service."
-    )
+    is_info_service = price is not None and price < 0
+    if is_info_service:
+        text = (
+            f"{path_line}\n\n"
+            f"<b>{name}</b>\n\n"
+            f"{desc}\n\n"
+            f"{get_text('info_service_note', user.id)}"
+        )
+    else:
+        text = (
+            f"{path_line}\n\n"
+            f"<b>{name}</b>\n\n"
+            f"{desc}\n\n"
+            f"рџ’° Price: <b>${price:.2f}</b>\n"
+            f"рџ“¦ Stock: {_stock_str(stock)}\n"
+            f"рџ’і Your balance: <b>${balance:.2f}</b>\n\n"
+            f"Tap the button below to purchase this service."
+        )
 
     back_cb = f"subcat|{cat}|{subcat}" if subcat else f"cat_{cat}"
-    keyboard = [
-        [InlineKeyboardButton(get_text('buy', user.id, price=price), callback_data=f'buy_{product_id}')],
-        [InlineKeyboardButton(get_text('back', user.id), callback_data=back_cb)],
-        [InlineKeyboardButton(get_text('main_menu', user.id), callback_data='menu')],
-    ]
+    keyboard = []
+    if not is_info_service:
+        keyboard.append([InlineKeyboardButton(get_text('buy', user.id, price=price), callback_data=f'buy_{product_id}')])
+    keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data=back_cb)])
+    keyboard.append([InlineKeyboardButton(get_text('main_menu', user.id), callback_data='menu')])
 
     if photo_url and os.path.exists(photo_url):
         with open(photo_url, 'rb') as photo_file:
@@ -296,11 +311,11 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
     user_lang = user_data.get('language', 'ru')
     prod = db.get_product(product_id, lang=user_lang)
     if not prod:
-        await query.answer("❌ Товар не найден", show_alert=True)
+        await query.answer("вќЊ РўРѕРІР°СЂ РЅРµ РЅР°Р№РґРµРЅ", show_alert=True)
         return
 
     if isinstance(prod, dict):
-        product_name = prod.get('name', 'Товар')
+        product_name = prod.get('name', 'РўРѕРІР°СЂ')
         product_price = prod.get('price_usd', 0)
         product_category = prod.get('category', '')
     else:
@@ -308,27 +323,35 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
         product_price = prod[3]
         product_category = prod[1]
 
+    if product_price is not None and product_price < 0:
+        await _edit_or_send(
+            query,
+            "❌ Эта позиция недоступна для покупки.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(get_text('back', user.id), callback_data=f'prod_{product_id}')]])
+        )
+        return
+
     success, message, product_data = db.purchase(user.id, product_id)
 
     if not success:
-        if "Недостаточно средств" in message:
+        if "РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ СЃСЂРµРґСЃС‚РІ" in message:
             balance = db.get_balance(user.id)
             need = product_price - balance
             text = (
-                f"❌ Недостаточно средств\n\n"
-                f"💰 Нужно: ${product_price:.2f}\n"
-                f"💳 Ваш баланс: ${balance:.2f}\n"
-                f"❌ Не хватает: ${need:.2f}"
+                f"вќЊ РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ СЃСЂРµРґСЃС‚РІ\n\n"
+                f"рџ’° РќСѓР¶РЅРѕ: ${product_price:.2f}\n"
+                f"рџ’і Р’Р°С€ Р±Р°Р»Р°РЅСЃ: ${balance:.2f}\n"
+                f"вќЊ РќРµ С…РІР°С‚Р°РµС‚: ${need:.2f}"
             )
             keyboard = [
-                [InlineKeyboardButton("💰 Пополнить", callback_data='deposit')],
+                [InlineKeyboardButton("рџ’° РџРѕРїРѕР»РЅРёС‚СЊ", callback_data='deposit')],
                 [InlineKeyboardButton(get_text('back', user.id), callback_data=f'prod_{product_id}')]
             ]
-        elif "закончился" in message:
-            text = "❌ Товар закончился. Попробуйте другой товар."
+        elif "Р·Р°РєРѕРЅС‡РёР»СЃСЏ" in message:
+            text = "вќЊ РўРѕРІР°СЂ Р·Р°РєРѕРЅС‡РёР»СЃСЏ. РџРѕРїСЂРѕР±СѓР№С‚Рµ РґСЂСѓРіРѕР№ С‚РѕРІР°СЂ."
             keyboard = [[InlineKeyboardButton(get_text('back', user.id), callback_data=f'cat_{product_category}')]]
         else:
-            text = f"❌ Ошибка: {message}"
+            text = f"вќЊ РћС€РёР±РєР°: {message}"
             keyboard = [[InlineKeyboardButton(get_text('back', user.id), callback_data='services')]]
 
         await _edit_or_send(
@@ -343,23 +366,23 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
         try:
             await context.bot.send_message(
                 admin_id,
-                f"🛒 <b>НОВАЯ ПОКУПКА</b>\n\n"
-                f"👤 Пользователь: @{user.username or 'нет'}\n"
-                f"🆔 ID: <code>{user.id}</code>\n"
-                f"📦 Товар: {product_name}\n"
-                f"💰 Сумма: ${product_price:.2f}\n\n"
-                f"🔔 Свяжитесь с покупателем!",
+                f"рџ›’ <b>РќРћР’РђРЇ РџРћРљРЈРџРљРђ</b>\n\n"
+                f"рџ‘¤ РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ: @{user.username or 'РЅРµС‚'}\n"
+                f"рџ†” ID: <code>{user.id}</code>\n"
+                f"рџ“¦ РўРѕРІР°СЂ: {product_name}\n"
+                f"рџ’° РЎСѓРјРјР°: ${product_price:.2f}\n\n"
+                f"рџ”” РЎРІСЏР¶РёС‚РµСЃСЊ СЃ РїРѕРєСѓРїР°С‚РµР»РµРј!",
                 parse_mode='HTML'
             )
         except Exception:
             pass
 
     text = (
-        f"✅ <b>{get_text('purchase_success', user.id)}</b>\n\n"
-        f"📦 Товар: {product_name}\n"
-        f"💰 Списано: ${product_price:.2f}\n\n"
-        f"🔔 Напишите {SUPPORT_CONTACT} для получения услуги.\n"
-        f"🆔 Ваш ID: <code>{user.id}</code>"
+        f"вњ… <b>{get_text('purchase_success', user.id)}</b>\n\n"
+        f"рџ“¦ РўРѕРІР°СЂ: {product_name}\n"
+        f"рџ’° РЎРїРёСЃР°РЅРѕ: ${product_price:.2f}\n\n"
+        f"рџ”” РќР°РїРёС€РёС‚Рµ {SUPPORT_CONTACT} РґР»СЏ РїРѕР»СѓС‡РµРЅРёСЏ СѓСЃР»СѓРіРё.\n"
+        f"рџ†” Р’Р°С€ ID: <code>{user.id}</code>"
     )
     keyboard = [[InlineKeyboardButton(get_text('main_menu', user.id), callback_data='menu')]]
 
@@ -369,3 +392,5 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='HTML'
     )
+
+

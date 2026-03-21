@@ -6,10 +6,13 @@ from config import ADMIN_IDS
 import logging
 import asyncio
 import html
+import re
+from deep_translator import GoogleTranslator
 
 logger = logging.getLogger(__name__)
 
 active_broadcasts = {}
+_translation_cache = {}
 
 
 async def _edit_or_send(query, text: str, reply_markup=None, parse_mode=None):
@@ -51,6 +54,49 @@ def _render_broadcast_text(template: str | None, user_row) -> str | None:
         .replace('{username}', html.escape(username))
         .replace('{user_id}', str(user_id))
     )
+
+
+def _normalize_lang(lang: str | None) -> str:
+    return lang if lang in {'ru', 'en', 'uk'} else 'ru'
+
+
+def _translate_text_preserving_markup(text: str | None, source_lang: str, target_lang: str) -> str | None:
+    if not text:
+        return text
+
+    source_lang = _normalize_lang(source_lang)
+    target_lang = _normalize_lang(target_lang)
+    if source_lang == target_lang:
+        return text
+
+    cache_key = (text, source_lang, target_lang)
+    if cache_key in _translation_cache:
+        return _translation_cache[cache_key]
+
+    token_map = {}
+
+    def protect(pattern: str, current_text: str, prefix: str) -> str:
+        def repl(match):
+            token = f"__{prefix}_{len(token_map)}__"
+            token_map[token] = match.group(0)
+            return token
+        return re.sub(pattern, repl, current_text)
+
+    protected = text
+    protected = protect(r'<[^>]+>', protected, 'HTML')
+    protected = protect(r'\{mention\}|\{first_name\}|\{username\}|\{user_id\}', protected, 'VAR')
+
+    try:
+        translated = GoogleTranslator(source=source_lang, target=target_lang).translate(protected)
+    except Exception as e:
+        logger.warning(f"Broadcast translation failed {source_lang}->{target_lang}: {e}")
+        translated = text
+    else:
+        for token, original in token_map.items():
+            translated = translated.replace(token, original)
+
+    _translation_cache[cache_key] = translated
+    return translated
 
 
 def _broadcast_keyboard(has_photo: bool = False, draft_id: int | None = None):
@@ -139,10 +185,12 @@ async def admin_broadcast_menu(update: Update, context: ContextTypes.DEFAULT_TYP
 async def broadcast_create_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
+    user_row = db.get_user(user.id) or {}
 
     context.user_data.pop('broadcast_draft_id', None)
     context.user_data['broadcast_text'] = None
     context.user_data['broadcast_photo_file_id'] = None
+    context.user_data['broadcast_source_lang'] = _normalize_lang(user_row.get('language'))
     db.set_pending_action(user.id, 'broadcast_text')
 
     await _edit_or_send(query, 
@@ -159,7 +207,9 @@ async def broadcast_create_start(update: Update, context: ContextTypes.DEFAULT_T
 
 async def broadcast_preview(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
     user = update.effective_user
+    user_row = db.get_user(user.id) or {}
     context.user_data['broadcast_text'] = text
+    context.user_data['broadcast_source_lang'] = _normalize_lang(user_row.get('language'))
     db.clear_pending_action(user.id)
     await _show_broadcast_preview(update.message, context)
 
@@ -167,7 +217,11 @@ async def broadcast_preview(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 async def broadcast_edit_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
+    user_row = db.get_user(user.id) or {}
     current_text = context.user_data.get('broadcast_text') or ''
+    context.user_data['broadcast_source_lang'] = _normalize_lang(
+        context.user_data.get('broadcast_source_lang') or user_row.get('language')
+    )
     db.set_pending_action(user.id, 'broadcast_text')
 
     await _edit_or_send(query, 
@@ -276,6 +330,7 @@ async def broadcast_drafts_menu(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def broadcast_load_draft(update: Update, context: ContextTypes.DEFAULT_TYPE, draft_id: int):
     query = update.callback_query
+    user_row = db.get_user(query.from_user.id) or {}
     draft = db.get_broadcast_draft(draft_id)
     if not draft:
         await query.answer("Черновик не найден", show_alert=True)
@@ -284,6 +339,7 @@ async def broadcast_load_draft(update: Update, context: ContextTypes.DEFAULT_TYP
     context.user_data['broadcast_draft_id'] = draft['id']
     context.user_data['broadcast_text'] = draft.get('text')
     context.user_data['broadcast_photo_file_id'] = draft.get('photo_file_id')
+    context.user_data['broadcast_source_lang'] = _normalize_lang(user_row.get('language'))
 
     try:
         await query.message.delete()
@@ -302,9 +358,11 @@ async def broadcast_delete_draft(update: Update, context: ContextTypes.DEFAULT_T
 async def broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
+    sender_row = db.get_user(user.id) or {}
 
     text = context.user_data.get('broadcast_text')
     photo_file_id = context.user_data.get('broadcast_photo_file_id')
+    source_lang = _normalize_lang(context.user_data.get('broadcast_source_lang') or sender_row.get('language'))
     if not text and not photo_file_id:
         await _edit_or_send(query, "❌ Ошибка: рассылка пустая")
         return
@@ -315,7 +373,7 @@ async def broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='HTML'
     )
 
-    users = db.execute("SELECT user_id, username, first_name FROM users", fetch=True) or []
+    users = db.execute("SELECT user_id, username, first_name, language FROM users", fetch=True) or []
     total = len(users)
     success = 0
     failed = 0
@@ -330,7 +388,8 @@ async def broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         row = dict(user_row)
         user_id = row['user_id']
-        rendered_text = _render_broadcast_text(text, row)
+        translated_text = _translate_text_preserving_markup(text, source_lang, row.get('language'))
+        rendered_text = _render_broadcast_text(translated_text, row)
         try:
             if photo_file_id:
                 await context.bot.send_photo(

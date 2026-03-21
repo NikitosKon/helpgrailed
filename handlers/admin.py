@@ -559,7 +559,11 @@ async def handle_admin_add_product_input(update: Update, context: ContextTypes.D
         else:
             context.user_data['add_prod_subcategory'] = None
             db.set_pending_action(user.id, 'admin_add_product_price')
-            await update.message.reply_text("✅ Категория сохранена\n\nВведите цену в $ (например 45.99):")
+            await update.message.reply_text(
+                "✅ Категория сохранена\n\n"
+                "Введите цену в $ (например 45.99).\n"
+                "Для информационной карточки без покупки укажите -1:"
+            )
         return
 
     elif action == 'admin_add_product_subcategory':
@@ -568,7 +572,11 @@ async def handle_admin_add_product_input(update: Update, context: ContextTypes.D
         if text == '/skip':
             context.user_data['add_prod_subcategory'] = None
             db.set_pending_action(user.id, 'admin_add_product_price')
-            await update.message.reply_text("✅ Подкатегория пропущена\n\nВведите цену в $ (например 45.99):")
+            await update.message.reply_text(
+                "✅ Подкатегория пропущена\n\n"
+                "Введите цену в $ (например 45.99).\n"
+                "Для информационной карточки без покупки укажите -1:"
+            )
             return
 
         if text not in subcats:
@@ -577,7 +585,11 @@ async def handle_admin_add_product_input(update: Update, context: ContextTypes.D
 
         context.user_data['add_prod_subcategory'] = text
         db.set_pending_action(user.id, 'admin_add_product_price')
-        await update.message.reply_text("✅ Подкатегория сохранена\n\nВведите цену в $ (например 45.99):")
+        await update.message.reply_text(
+            "✅ Подкатегория сохранена\n\n"
+            "Введите цену в $ (например 45.99).\n"
+            "Для информационной карточки без покупки укажите -1:"
+        )
         return
 
     elif action == 'admin_add_product_price':
@@ -587,7 +599,7 @@ async def handle_admin_add_product_input(update: Update, context: ContextTypes.D
             db.set_pending_action(user.id, 'admin_add_product_desc')
             await update.message.reply_text("✅ Цена сохранена\n\nВведите описание (или /skip):")
         except ValueError:
-            await update.message.reply_text("❌ Введите корректное число (например 45.99)")
+            await update.message.reply_text("❌ Введите корректное число (например 45.99 или -1)")
         return
 
     elif action == 'admin_add_product_desc':
@@ -2107,7 +2119,7 @@ async def handle_admin_edit_product_input(update: Update, context: ContextTypes.
             context.user_data['edit_prod_subcategory'] = text
 
         db.set_pending_action(user.id, f'admin_edit_{product_id}_price')
-        await update.message.reply_text("Введите новую цену (или /skip):")
+        await update.message.reply_text("Введите новую цену (или /skip, для информационной карточки укажите -1):")
         return
 
     if field == 'price':
@@ -2117,7 +2129,7 @@ async def handle_admin_edit_product_input(update: Update, context: ContextTypes.
             try:
                 context.user_data['edit_prod_price'] = float(text.replace(',', '.'))
             except ValueError:
-                await update.message.reply_text("❌ Введите корректную цену, например 45.99")
+                await update.message.reply_text("❌ Введите корректную цену, например 45.99 или -1")
                 return
         db.set_pending_action(user.id, f'admin_edit_{product_id}_desc')
         await update.message.reply_text("Введите новое описание (или /skip):")
