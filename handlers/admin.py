@@ -241,6 +241,14 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
     elif data == 'admin_edit_product':
         await admin_edit_product_list(update, context)
 
+    elif data.startswith('admin_edit_product_field_'):
+        payload = data.replace('admin_edit_product_field_', '', 1)
+        try:
+            pid_str, field = payload.split('_', 1)
+            await admin_edit_product_field_start(update, context, int(pid_str), field)
+        except ValueError:
+            await query.answer("Некорректный ID товара", show_alert=True)
+
     elif data.startswith('admin_edit_') and len(data.split('_')) == 3:
         try:
             pid = int(data.split('_')[2])
@@ -733,32 +741,203 @@ async def admin_edit_product_start(update: Update, context: ContextTypes.DEFAULT
         await _edit_or_send(query, "❌ Товар не найден")
         return
 
-    db.set_pending_action(query.from_user.id, f'admin_edit_{product_id}_name')
+    db.clear_pending_action(query.from_user.id)
+    for key in list(context.user_data.keys()):
+        if key.startswith('edit_prod_'):
+            del context.user_data[key]
 
-    if isinstance(prod, dict):
-        current_name = prod.get('name', 'Без названия')
-        current_price = prod.get('price_usd', 0)
-        current_desc = prod.get('description', 'нет')
-        current_stock = prod.get('stock', -1)
-    else:
-        current_name = prod[2]
-        current_price = prod[3]
-        current_desc = prod[4] or 'нет'
-        current_stock = prod[5]
-
-    stock_str = '∞' if current_stock < 0 else str(current_stock)
-
-    text = (
-        f"✏️ <b>Редактирование товара ID {product_id}</b>\n\n"
-        f"Текущее название: {current_name}\n"
-        f"Текущая цена: ${current_price}\n"
-        f"Текущее описание: {current_desc}\n"
-        f"Текущий запас: {stock_str}\n\n"
-        f"Введите новое название товара (или /skip для пропуска):"
+    await _edit_or_send(
+        query,
+        _build_product_edit_text(product_id, prod),
+        reply_markup=InlineKeyboardMarkup(_build_product_edit_keyboard(product_id)),
+        parse_mode='HTML'
     )
 
-    keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data='admin_products')]]
-    await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+
+def _get_product_edit_current(prod):
+    if isinstance(prod, dict):
+        return {
+            'name': prod.get('name'),
+            'category': prod.get('category'),
+            'subcategory': prod.get('subcategory'),
+            'price': prod.get('price_usd'),
+            'desc': prod.get('description'),
+            'stock': prod.get('stock'),
+            'sort': prod.get('sort_order', 0),
+            'photo': prod.get('photo_url'),
+        }
+
+    return {
+        'name': prod[2],
+        'category': prod[1],
+        'subcategory': None,
+        'price': prod[3],
+        'desc': prod[4],
+        'stock': prod[5],
+        'sort': prod[7] if len(prod) > 7 else 0,
+        'photo': prod[8] if len(prod) > 8 else None,
+    }
+
+
+def _build_product_edit_keyboard(product_id: int):
+    return [
+        [
+            InlineKeyboardButton("📝 Название", callback_data=f'admin_edit_product_field_{product_id}_name'),
+            InlineKeyboardButton("📂 Категория", callback_data=f'admin_edit_product_field_{product_id}_category'),
+        ],
+        [
+            InlineKeyboardButton("📁 Подкатегория", callback_data=f'admin_edit_product_field_{product_id}_subcategory'),
+            InlineKeyboardButton("💵 Цена", callback_data=f'admin_edit_product_field_{product_id}_price'),
+        ],
+        [
+            InlineKeyboardButton("📄 Описание", callback_data=f'admin_edit_product_field_{product_id}_desc'),
+            InlineKeyboardButton("📦 Запас", callback_data=f'admin_edit_product_field_{product_id}_stock'),
+        ],
+        [
+            InlineKeyboardButton("↕️ Sort order", callback_data=f'admin_edit_product_field_{product_id}_sort'),
+            InlineKeyboardButton("🖼 Фото", callback_data=f'admin_edit_product_field_{product_id}_photo'),
+        ],
+        [
+            InlineKeyboardButton("📋 К списку товаров", callback_data='admin_edit_product'),
+            InlineKeyboardButton("◀️ Назад", callback_data='admin_products'),
+        ],
+    ]
+
+
+def _build_product_edit_text(product_id: int, prod) -> str:
+    current = _get_product_edit_current(prod)
+    stock_value = current['stock']
+    stock_str = '∞' if isinstance(stock_value, int) and stock_value < 0 else str(stock_value)
+    photo_str = "есть" if current.get('photo') else "нет"
+    desc = current.get('desc') or 'нет'
+    if len(desc) > 200:
+        desc = desc[:197] + '...'
+
+    return (
+        f"✏️ <b>Редактирование товара ID {product_id}</b>\n\n"
+        f"Название: {html.escape(current.get('name') or 'Без названия')}\n"
+        f"Категория: <code>{html.escape(current.get('category') or '-')}</code>\n"
+        f"Подкатегория: <code>{html.escape(current.get('subcategory') or '-')}</code>\n"
+        f"Цена: ${current.get('price')}\n"
+        f"Запас: {stock_str}\n"
+        f"Sort order: {current.get('sort', 0)}\n"
+        f"Фото: {photo_str}\n"
+        f"Описание: {html.escape(desc)}\n\n"
+        f"Выберите, что хотите изменить:"
+    )
+
+
+def _format_choice_list(options: dict[str, str]) -> str:
+    if not options:
+        return "нет"
+    return "\n".join(f"• <code>{html.escape(key)}</code> — {html.escape(value or '-')}" for key, value in options.items())
+
+
+def _parse_product_edit_action(action: str):
+    if action.startswith('admin_edit_product_'):
+        payload = action.replace('admin_edit_product_', '', 1)
+        parts = payload.split('_')
+        if len(parts) >= 2 and parts[0].isdigit():
+            return int(parts[0]), "_".join(parts[1:])
+
+    if action.startswith('admin_edit_'):
+        parts = action.split('_')
+        if len(parts) >= 4 and parts[2].isdigit():
+            return int(parts[2]), "_".join(parts[3:])
+
+    return None, None
+
+
+async def admin_edit_product_field_start(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int, field: str):
+    query = update.callback_query
+    prod = db.get_product(product_id)
+    if not prod:
+        await _edit_or_send(query, "❌ Товар не найден")
+        return
+
+    current = _get_product_edit_current(prod)
+    user = query.from_user
+    db.set_pending_action(user.id, f'admin_edit_product_{product_id}_{field}')
+
+    if field == 'name':
+        text = (
+            f"✏️ <b>Название товара ID {product_id}</b>\n\n"
+            f"Текущее значение: {html.escape(current.get('name') or 'Без названия')}\n\n"
+            "Введите новое название или /skip, чтобы оставить текущее."
+        )
+    elif field == 'category':
+        categories = db.get_categories('ru')
+        text = (
+            f"✏️ <b>Категория товара ID {product_id}</b>\n\n"
+            f"Текущая категория: <code>{html.escape(current.get('category') or '-')}</code>\n\n"
+            f"Доступные категории:\n{_format_choice_list(categories)}\n\n"
+            "Введите ID новой категории или /skip, чтобы оставить текущую."
+        )
+    elif field == 'subcategory':
+        category = current.get('category')
+        subcats = db.get_subcategories(category, lang='ru') if category else {}
+        if subcats:
+            choices = _format_choice_list(subcats)
+            helper = (
+                f"Доступные подкатегории для <code>{html.escape(category)}</code>:\n{choices}\n\n"
+                "Введите ID новой подкатегории, /skip чтобы оставить текущую, или /none чтобы очистить."
+            )
+        else:
+            helper = (
+                "Для текущей категории подкатегорий нет.\n\n"
+                "Отправьте /none чтобы очистить подкатегорию или /skip чтобы оставить как есть."
+            )
+        text = (
+            f"✏️ <b>Подкатегория товара ID {product_id}</b>\n\n"
+            f"Текущая подкатегория: <code>{html.escape(current.get('subcategory') or '-')}</code>\n\n"
+            f"{helper}"
+        )
+    elif field == 'price':
+        text = (
+            f"✏️ <b>Цена товара ID {product_id}</b>\n\n"
+            f"Текущее значение: ${current.get('price')}\n\n"
+            "Введите новую цену или /skip, чтобы оставить текущее значение.\n"
+            "Для информационной карточки можно указать <code>-1</code>."
+        )
+    elif field == 'desc':
+        text = (
+            f"✏️ <b>Описание товара ID {product_id}</b>\n\n"
+            f"Текущее значение:\n{html.escape(current.get('desc') or 'нет')}\n\n"
+            "Введите новое описание или /skip, чтобы оставить текущее."
+        )
+    elif field == 'stock':
+        text = (
+            f"✏️ <b>Запас товара ID {product_id}</b>\n\n"
+            f"Текущее значение: {current.get('stock')}\n\n"
+            "Введите новый запас или /skip, чтобы оставить текущее.\n"
+            "Используйте <code>-1</code> для бесконечного запаса."
+        )
+    elif field == 'sort':
+        text = (
+            f"✏️ <b>Sort order товара ID {product_id}</b>\n\n"
+            f"Текущее значение: {current.get('sort', 0)}\n\n"
+            "Введите новый sort order или /skip, чтобы оставить текущее."
+        )
+    elif field == 'photo':
+        db.set_pending_action(user.id, f'admin_edit_product_{product_id}_photo_waiting')
+        text = (
+            f"✏️ <b>Фото товара ID {product_id}</b>\n\n"
+            f"Сейчас фото: {'есть' if current.get('photo') else 'нет'}\n\n"
+            "Отправьте новое фото или /skip, чтобы оставить текущее."
+        )
+    else:
+        db.clear_pending_action(user.id)
+        await query.answer("Неизвестное поле", show_alert=True)
+        return
+
+    await _edit_or_send(
+        query,
+        text,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("◀️ Назад к товару", callback_data=f'admin_edit_{product_id}')],
+        ]),
+        parse_mode='HTML'
+    )
 
 
 async def admin_delete_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1910,9 +2089,8 @@ async def handle_admin_photo_input(update: Update, context: ContextTypes.DEFAULT
         return
 
     if action.startswith('admin_edit_') and action.endswith('_photo_waiting'):
-        try:
-            product_id = int(action.split('_')[2])
-        except (ValueError, IndexError):
+        product_id, _ = _parse_product_edit_action(action)
+        if product_id is None:
             await update.message.reply_text("❌ Некорректный ID товара")
             db.clear_pending_action(user.id)
             return
@@ -1924,42 +2102,17 @@ async def handle_admin_photo_input(update: Update, context: ContextTypes.DEFAULT
             context.user_data.clear()
             return
 
-        if isinstance(prod, dict):
-            updates = {
-                'name': context.user_data.get('edit_prod_name', prod.get('name')),
-                'category': context.user_data.get('edit_prod_category', prod.get('category')),
-                'subcategory': context.user_data.get('edit_prod_subcategory', prod.get('subcategory')),
-                'price_usd': context.user_data.get('edit_prod_price', prod.get('price_usd')),
-                'description': context.user_data.get('edit_prod_desc', prod.get('description')),
-                'stock': context.user_data.get('edit_prod_stock', prod.get('stock')),
-                'sort_order': context.user_data.get('edit_prod_sort', prod.get('sort_order')),
-                'photo_url': photo_path,
-            }
-        else:
-            updates = {
-                'name': context.user_data.get('edit_prod_name', prod[2]),
-                'category': context.user_data.get('edit_prod_category', prod[1]),
-                'subcategory': context.user_data.get('edit_prod_subcategory', None),
-                'price_usd': context.user_data.get('edit_prod_price', prod[3]),
-                'description': context.user_data.get('edit_prod_desc', prod[4]),
-                'stock': context.user_data.get('edit_prod_stock', prod[5]),
-                'sort_order': context.user_data.get('edit_prod_sort', prod[7]),
-                'photo_url': photo_path,
-            }
-
-        if db.update_product(product_id, input_lang='auto', **updates):
+        if db.update_product(product_id, input_lang='auto', photo_url=photo_path):
             await update.message.reply_text(
-                f"✅ Товар ID {product_id} обновлён!",
+                "✅ Фото товара обновлено!",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 К списку товаров", callback_data='admin_list_products')],
-                    [InlineKeyboardButton("◀️ Назад", callback_data='admin_products')],
+                    [InlineKeyboardButton("◀️ Назад к товару", callback_data=f'admin_edit_{product_id}')],
                 ])
             )
         else:
-            await update.message.reply_text("❌ Ошибка при обновлении товара")
+            await update.message.reply_text("❌ Ошибка при обновлении фото товара")
 
         db.clear_pending_action(user.id)
-        context.user_data.clear()
         return
 
     if action == 'admin_add_category_photo':
@@ -2133,165 +2286,164 @@ async def handle_admin_edit_category_input(update: Update, context: ContextTypes
 
 
 async def handle_admin_edit_product_input(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, text: str):
-    """Edit product flow: name -> category -> price -> desc -> stock -> sort -> photo."""
+    """Точечное редактирование полей товара."""
     user = update.effective_user
     text = text.strip()
-    parts = action.split('_')
-    if len(parts) < 4:
+    product_id, field = _parse_product_edit_action(action)
+    if product_id is None or not field:
         db.clear_pending_action(user.id)
         return
 
-    try:
-        product_id = int(parts[2])
-    except ValueError:
-        db.clear_pending_action(user.id)
-        await update.message.reply_text("❌ Некорректный ID товара")
-        return
-
-    field = "_".join(parts[3:])
     prod = db.get_product(product_id)
     if not prod:
         db.clear_pending_action(user.id)
         await update.message.reply_text("❌ Товар не найден")
         return
 
-    if isinstance(prod, dict):
-        current = {
-            'name': prod.get('name'),
-            'category': prod.get('category'),
-            'subcategory': prod.get('subcategory'),
-            'price': prod.get('price_usd'),
-            'desc': prod.get('description'),
-            'stock': prod.get('stock'),
-            'sort': prod.get('sort_order', 0),
-            'photo': prod.get('photo_url'),
-        }
-    else:
-        current = {
-            'name': prod[2],
-            'category': prod[1],
-            'subcategory': None,
-            'price': prod[3],
-            'desc': prod[4],
-            'stock': prod[5],
-            'sort': prod[7] if len(prod) > 7 else 0,
-            'photo': prod[8] if len(prod) > 8 else None,
-        }
+    current = _get_product_edit_current(prod)
+
+    async def _done(message: str):
+        db.clear_pending_action(user.id)
+        await update.message.reply_text(
+            f"{message}\n\n{_build_product_edit_text(product_id, db.get_product(product_id))}",
+            reply_markup=InlineKeyboardMarkup(_build_product_edit_keyboard(product_id)),
+            parse_mode='HTML'
+        )
 
     if field == 'name':
-        context.user_data['edit_prod_name'] = current['name'] if text == '/skip' else text
-        db.set_pending_action(user.id, f'admin_edit_{product_id}_category')
-        await update.message.reply_text("Введите новую категорию (или /skip):")
+        if text == '/skip':
+            await _done("Изменение названия отменено.")
+            return
+
+        if db.update_product(product_id, input_lang='auto', name=text):
+            await _done("✅ Название обновлено.")
+        else:
+            await update.message.reply_text("❌ Ошибка при обновлении названия товара")
         return
 
     if field == 'category':
-        categories = config.CATEGORIES
-        new_category = current['category'] if text == '/skip' else text
-        if text != '/skip' and new_category not in categories:
-            await update.message.reply_text(f"❌ Неверная категория. Доступные: {', '.join(categories.keys())}")
+        categories = db.get_categories('ru')
+        if text == '/skip':
+            await _done("Изменение категории отменено.")
             return
-        context.user_data['edit_prod_category'] = new_category
 
-        subcats = db.get_subcategories(new_category, lang='ru')
-        if subcats:
-            db.set_pending_action(user.id, f'admin_edit_{product_id}_subcategory')
+        new_category = text
+        if new_category not in categories:
             await update.message.reply_text(
-                "Введите новую подкатегорию (или /skip чтобы оставить текущую, или /none чтобы очистить):\n"
-                f"Доступные: {', '.join(subcats.keys())}"
+                f"❌ Неверная категория.\n\nДоступные категории:\n{_format_choice_list(categories)}",
+                parse_mode='HTML'
             )
+            return
+
+        updates = {'category': new_category}
+        subcats = db.get_subcategories(new_category, lang='ru')
+        if current.get('subcategory') and current['subcategory'] not in subcats:
+            updates['subcategory'] = None
+
+        if db.update_product(product_id, input_lang='auto', **updates):
+            suffix = ""
+            if 'subcategory' in updates:
+                suffix = "\nПодкатегория очищена, потому что не относится к новой категории."
+            await _done(f"✅ Категория обновлена.{suffix}")
         else:
-            context.user_data['edit_prod_subcategory'] = None
-            db.set_pending_action(user.id, f'admin_edit_{product_id}_price')
-            await update.message.reply_text("Введите новую цену (или /skip):")
+            await update.message.reply_text("❌ Ошибка при обновлении категории товара")
         return
 
     if field == 'subcategory':
-        category = context.user_data.get('edit_prod_category', current['category'])
+        category = current['category']
         subcats = db.get_subcategories(category, lang='ru') if category else {}
 
         if text == '/skip':
-            context.user_data['edit_prod_subcategory'] = current.get('subcategory')
+            await _done("Изменение подкатегории отменено.")
+            return
         elif text in {'/none', 'none', 'null', '-'}:
-            context.user_data['edit_prod_subcategory'] = None
+            new_subcategory = None
         else:
-            if subcats and text not in subcats:
-                await update.message.reply_text(f"❌ Неверная подкатегория. Доступные: {', '.join(subcats.keys())}")
+            if not subcats:
+                await update.message.reply_text("❌ Для текущей категории подкатегорий нет. Используйте /none или /skip.")
                 return
-            context.user_data['edit_prod_subcategory'] = text
+            if subcats and text not in subcats:
+                await update.message.reply_text(
+                    f"❌ Неверная подкатегория.\n\nДоступные варианты:\n{_format_choice_list(subcats)}",
+                    parse_mode='HTML'
+                )
+                return
+            new_subcategory = text
 
-        db.set_pending_action(user.id, f'admin_edit_{product_id}_price')
-        await update.message.reply_text("Введите новую цену (или /skip, для информационной карточки укажите -1):")
+        if db.update_product(product_id, input_lang='auto', subcategory=new_subcategory):
+            await _done("✅ Подкатегория обновлена.")
+        else:
+            await update.message.reply_text("❌ Ошибка при обновлении подкатегории товара")
         return
 
     if field == 'price':
         if text == '/skip':
-            context.user_data['edit_prod_price'] = current['price']
+            await _done("Изменение цены отменено.")
+            return
         else:
             try:
-                context.user_data['edit_prod_price'] = float(text.replace(',', '.'))
+                new_price = float(text.replace(',', '.'))
             except ValueError:
                 await update.message.reply_text("❌ Введите корректную цену, например 45.99 или -1")
                 return
-        db.set_pending_action(user.id, f'admin_edit_{product_id}_desc')
-        await update.message.reply_text("Введите новое описание (или /skip):")
+        if db.update_product(product_id, input_lang='auto', price_usd=new_price):
+            await _done("✅ Цена обновлена.")
+        else:
+            await update.message.reply_text("❌ Ошибка при обновлении цены товара")
         return
 
     if field == 'desc':
-        context.user_data['edit_prod_desc'] = current['desc'] if text == '/skip' else text
-        db.set_pending_action(user.id, f'admin_edit_{product_id}_stock')
-        await update.message.reply_text("Введите новый запас (или /skip):")
+        if text == '/skip':
+            await _done("Изменение описания отменено.")
+            return
+
+        if db.update_product(product_id, input_lang='auto', description=text):
+            await _done("✅ Описание обновлено.")
+        else:
+            await update.message.reply_text("❌ Ошибка при обновлении описания товара")
         return
 
     if field == 'stock':
         if text == '/skip':
-            context.user_data['edit_prod_stock'] = current['stock']
+            await _done("Изменение запаса отменено.")
+            return
         else:
             try:
-                context.user_data['edit_prod_stock'] = int(text)
+                new_stock = int(text)
             except ValueError:
                 await update.message.reply_text("❌ Запас должен быть целым числом")
                 return
-        db.set_pending_action(user.id, f'admin_edit_{product_id}_sort')
-        await update.message.reply_text("Введите новый sort order (или /skip):")
+        if db.update_product(product_id, input_lang='auto', stock=new_stock):
+            await _done("✅ Запас обновлён.")
+        else:
+            await update.message.reply_text("❌ Ошибка при обновлении запаса товара")
         return
 
     if field == 'sort':
         if text == '/skip':
-            context.user_data['edit_prod_sort'] = current['sort']
+            await _done("Изменение sort order отменено.")
+            return
         else:
             try:
-                context.user_data['edit_prod_sort'] = int(text)
+                new_sort = int(text)
             except ValueError:
                 await update.message.reply_text("❌ sort order должен быть целым числом")
                 return
-        db.set_pending_action(user.id, f'admin_edit_{product_id}_photo_waiting')
-        await update.message.reply_text("Отправьте новое фото товара или /skip:")
+        if db.update_product(product_id, input_lang='auto', sort_order=new_sort):
+            await _done("✅ Sort order обновлён.")
+        else:
+            await update.message.reply_text("❌ Ошибка при обновлении sort order товара")
         return
 
     if field == 'photo_waiting' and text == '/skip':
-        updates = {
-            'name': context.user_data.get('edit_prod_name', current['name']),
-            'category': context.user_data.get('edit_prod_category', current['category']),
-            'subcategory': context.user_data.get('edit_prod_subcategory', current.get('subcategory')),
-            'price_usd': context.user_data.get('edit_prod_price', current['price']),
-            'description': context.user_data.get('edit_prod_desc', current['desc']),
-            'stock': context.user_data.get('edit_prod_stock', current['stock']),
-            'sort_order': context.user_data.get('edit_prod_sort', current['sort']),
-            'photo_url': current['photo'],
-        }
-        if db.update_product(product_id, input_lang='auto', **updates):
-            await update.message.reply_text(
-                f"✅ Товар ID {product_id} обновлён!",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 К списку товаров", callback_data='admin_list_products')],
-                    [InlineKeyboardButton("◀️ Назад", callback_data='admin_products')],
-                ])
-            )
-        else:
-            await update.message.reply_text("❌ Ошибка при обновлении товара")
-        db.clear_pending_action(user.id)
-        context.user_data.clear()
+        await _done("Изменение фото отменено.")
         return
+
+    if field == 'photo_waiting':
+        await update.message.reply_text("❌ Отправьте новое фото товара или /skip.")
+        return
+
+    db.clear_pending_action(user.id)
 
 
 def _menu_target_options():
