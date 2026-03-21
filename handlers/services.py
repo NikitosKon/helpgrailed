@@ -89,6 +89,8 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
         return
 
     try:
+        category_info = db.get_category(category)
+        category_photo = category_info.get('photo_url') if category_info else None
         subcats = db.get_subcategories(category, lang=user_lang)
         if subcats:
             categories = db.get_categories(user_lang)
@@ -101,7 +103,15 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
             ]
             keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data='services')])
 
-            await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard))
+            if category_photo and os.path.exists(category_photo):
+                with open(category_photo, 'rb') as photo_file:
+                    await query.message.reply_photo(
+                        photo=photo_file,
+                        caption=text,
+                        reply_markup=InlineKeyboardMarkup(keyboard)
+                    )
+            else:
+                await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard))
             return
 
         items = db.get_products(category, lang=user_lang)
@@ -134,8 +144,6 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
             keyboard.append([InlineKeyboardButton(btn_text, callback_data=f'prod_{pid}')])
 
         keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data='services')])
-        category_info = db.get_category(category)
-        category_photo = category_info.get('photo_url') if category_info else None
 
         if category_photo and os.path.exists(category_photo):
             with open(category_photo, 'rb') as photo_file:
