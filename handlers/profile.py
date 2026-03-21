@@ -30,8 +30,31 @@ async def _edit_or_send(query, text, reply_markup=None, parse_mode=None, **kwarg
             parse_mode=parse_mode,
             **kwargs
         )
+
+
+async def _edit_or_send_with_core_photo(query, text, core_key: str, reply_markup=None, parse_mode=None, **kwargs):
+    photo_file_id = (db.get_main_menu_core().get(core_key, {}) or {}).get('photo_file_id')
+    if not photo_file_id:
+        return await _edit_or_send(query, text, reply_markup=reply_markup, parse_mode=parse_mode, **kwargs)
+
+    try:
+        await query.message.delete()
+    except Exception:
+        pass
+    return await query.get_bot().send_photo(
+        chat_id=query.message.chat_id,
+        photo=photo_file_id,
+        caption=text,
+        reply_markup=reply_markup,
+        parse_mode=parse_mode,
+        **kwargs
+    )
 def _strip_leading_icon(text: str) -> str:
     return re.sub(r'^[^\w]+', '', text or '').strip()
+
+
+def _order_status_text(status: str, user_id: int) -> str:
+    return get_text(f'order_status_{status}', user_id)
 
 async def handle_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Профиль пользователя"""
@@ -95,8 +118,9 @@ async def handle_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(get_text('back', user.id), callback_data='menu')]
     ]
     
-    await _edit_or_send(query, 
+    await _edit_or_send_with_core_photo(query, 
         text,
+        'profile',
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='HTML'
     )
@@ -120,7 +144,12 @@ async def handle_purchase_history(update: Update, context: ContextTypes.DEFAULT_
     text = f"📜 <b>{get_text('your_purchases', user.id)}:</b>\n\n"
     for item in history:
         date = datetime.fromisoformat(item['purchase_date']).strftime('%d.%m.%Y')
-        text += f"• {date} - {item['product_name']} - ${item['amount']}\n"
+        status = item.get('status') or 'completed'
+        text += (
+            f"• #{item['id']} · {date}\n"
+            f"  {item['product_name']} — ${item['amount']}\n"
+            f"  {get_text('order_status', user.id)}: {_order_status_text(status, user.id)}\n\n"
+        )
     
     await _edit_or_send(query, 
         text,
@@ -171,8 +200,9 @@ async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💰 {get_text('earned', user.id)}: ${earned:.2f}"
     )
     
-    await _edit_or_send(query, 
+    await _edit_or_send_with_core_photo(query, 
         text,
+        'referral',
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton(f"📋 {get_text('referral_details', user.id)}", callback_data='referral_details')],
             [InlineKeyboardButton(get_text('back', user.id), callback_data='menu')]

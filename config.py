@@ -47,6 +47,7 @@ class Config:
                 'services': "🛒 Услуги",
                 'profile': "👤 Профиль",
                 'referral': "🔗 Рефералка",
+                'faq': "❓ FAQ",
                 'back': "◀️ Назад",
                 'balance': "💰 Баланс: ${balance}",
                 'deposit': "💰 Пополнить",
@@ -88,6 +89,7 @@ class Config:
                 'services': "🛒 Services",
                 'profile': "👤 Profile",
                 'referral': "🔗 Referral",
+                'faq': "❓ FAQ",
                 'back': "◀️ Back",
                 'balance': "💰 Balance: ${balance}",
                 'deposit': "💰 Deposit",
@@ -129,6 +131,7 @@ class Config:
                 'services': "🛒 Послуги",
                 'profile': "👤 Профіль",
                 'referral': "🔗 Рефералка",
+                'faq': "❓ FAQ",
                 'back': "◀️ Назад",
                 'balance': "💰 Баланс: ${balance}",
                 'deposit': "💰 Поповнити",
@@ -199,6 +202,14 @@ class Config:
             'withdraw_rules': 'Вывод возможен от 10 USDT. Комиссия - 5%.',
             'promo_discount': '💸 Скидка по промокоду',
             'promo_was': '💰 Было',
+            'faq_intro': 'Выберите вопрос, чтобы быстро получить ответ.',
+            'order_status': 'Статус',
+            'order_status_pending': 'Ожидает',
+            'order_status_in_progress': 'В работе',
+            'order_status_completed': 'Завершён',
+            'order_status_cancelled': 'Отменён',
+            'my_orders': 'Мои заказы',
+            'no_orders': 'У вас пока нет заказов.',
         })
         self.LANGUAGES['en'].update({
             'profile_title': 'Profile',
@@ -233,6 +244,14 @@ class Config:
             'withdraw_rules': 'Withdrawals available from 10 USDT. Fee: 5%.',
             'promo_discount': '💸 Promo discount',
             'promo_was': '💰 Was',
+            'faq_intro': 'Choose a question to get a quick answer.',
+            'order_status': 'Status',
+            'order_status_pending': 'Pending',
+            'order_status_in_progress': 'In progress',
+            'order_status_completed': 'Completed',
+            'order_status_cancelled': 'Cancelled',
+            'my_orders': 'My orders',
+            'no_orders': 'You have no orders yet.',
         })
         self.LANGUAGES['uk'].update({
             'profile_title': 'Профіль',
@@ -267,6 +286,14 @@ class Config:
             'withdraw_rules': 'Вивід можливий від 10 USDT. Комісія - 5%.',
             'promo_discount': '💸 Знижка за промокодом',
             'promo_was': '💰 Було',
+            'faq_intro': 'Оберіть питання, щоб швидко отримати відповідь.',
+            'order_status': 'Статус',
+            'order_status_pending': 'Очікує',
+            'order_status_in_progress': 'В роботі',
+            'order_status_completed': 'Завершено',
+            'order_status_cancelled': 'Скасовано',
+            'my_orders': 'Мої замовлення',
+            'no_orders': 'У вас ще немає замовлень.',
         })
         
         # Список поддерживаемых валют в CryptoPay

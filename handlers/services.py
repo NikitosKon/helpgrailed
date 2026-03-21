@@ -1,12 +1,16 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
+
+from config import ADMIN_IDS, SUPPORT_CONTACT
 from database import db
 from keyboards.reply import categories_menu, get_text
-from config import SUPPORT_CONTACT, ADMIN_IDS
+
 import logging
 import os
 
+
 logger = logging.getLogger(__name__)
+
 
 async def _edit_or_send(query, text, reply_markup=None, parse_mode=None, **kwargs):
     try:
@@ -32,34 +36,58 @@ async def _edit_or_send(query, text, reply_markup=None, parse_mode=None, **kwarg
         )
 
 
+async def _edit_or_send_with_core_photo(query, text, core_key: str, reply_markup=None, parse_mode=None, **kwargs):
+    photo_file_id = (db.get_main_menu_core().get(core_key, {}) or {}).get('photo_file_id')
+    if not photo_file_id:
+        return await _edit_or_send(query, text, reply_markup=reply_markup, parse_mode=parse_mode, **kwargs)
+
+    try:
+        await query.message.delete()
+    except Exception:
+        pass
+    return await query.get_bot().send_photo(
+        chat_id=query.message.chat_id,
+        photo=photo_file_id,
+        caption=text,
+        reply_markup=reply_markup,
+        parse_mode=parse_mode,
+        **kwargs
+    )
+
+
+def _stock_str(stock: int) -> str:
+    return '∞' if stock < 0 else str(stock)
+
+
 async def handle_services(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать категории услуг"""
     query = update.callback_query
     user = query.from_user
-    
-    await _edit_or_send(query, 
+
+    await _edit_or_send_with_core_photo(
+        query,
         get_text('choose_category', user.id),
+        'services',
         reply_markup=categories_menu(user.id)
     )
 
+
 async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, category):
-    """Показать товары в категории"""
     query = update.callback_query
     user = query.from_user
     user_data = db.get_user(user.id) or {}
     user_lang = user_data.get('language', 'ru')
-    
-    logger.info(f"Категория: {category}")
-    
+
+    logger.info(f"Category selected: {category}")
+
     if category == 'support':
-        text = "📞 Техническая поддержка\n\nСвяжитесь с нами:"
+        text = "🆘 Technical support\n\nContact us here:"
         keyboard = [
             [InlineKeyboardButton(SUPPORT_CONTACT, url=f"https://t.me/{SUPPORT_CONTACT.replace('@', '')}")],
             [InlineKeyboardButton(get_text('back', user.id), callback_data='services')]
         ]
         await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard))
         return
-    
+
     try:
         subcats = db.get_subcategories(category, lang=user_lang)
         if subcats:
@@ -67,30 +95,29 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
             cat_name = categories.get(category, category)
             text = f"{cat_name}\n\n{get_text('choose_subcategory', user.id)}"
 
-            keyboard = []
-            for subcat_id, subcat_name in subcats.items():
-                keyboard.append([InlineKeyboardButton(subcat_name, callback_data=f"subcat|{category}|{subcat_id}")])
+            keyboard = [
+                [InlineKeyboardButton(subcat_name, callback_data=f"subcat|{category}|{subcat_id}")]
+                for subcat_id, subcat_name in subcats.items()
+            ]
             keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data='services')])
 
             await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard))
             return
 
         items = db.get_products(category, lang=user_lang)
-        
+        categories = db.get_categories(user_lang)
+        cat_name = categories.get(category, category)
+
         if not items:
-            categories = db.get_categories(user_lang)
-            cat_name = categories.get(category, category)
-            await _edit_or_send(query, 
+            await _edit_or_send(
+                query,
                 f"{get_text('no_items', user.id)}\n\n{cat_name}",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(get_text('back', user.id), callback_data='services')]])
             )
             return
-        
-        categories = db.get_categories(user_lang)
-        cat_name = categories.get(category, category)
+
         text = f"{cat_name}\n\n{get_text('choose_item', user.id)}"
         keyboard = []
-        
         for item in items:
             if isinstance(item, dict):
                 pid = item.get('id')
@@ -102,11 +129,10 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
                 name = item[2]
                 price = item[3]
                 stock = item[5]
-            
-            stock_str = '∞' if stock < 0 else str(stock)
-            btn_text = f"{name} — ${price:.0f} ({get_text('in_stock', user.id)}: {stock_str})"
+
+            btn_text = f"{name} — ${price:.0f} ({get_text('in_stock', user.id)}: {_stock_str(stock)})"
             keyboard.append([InlineKeyboardButton(btn_text, callback_data=f'prod_{pid}')])
-        
+
         keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data='services')])
         category_info = db.get_category(category)
         category_photo = category_info.get('photo_url') if category_info else None
@@ -120,16 +146,17 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
                 )
         else:
             await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard))
-        
+
     except Exception as e:
-        logger.error(f"Ошибка в категории {category}: {e}")
-        await _edit_or_send(query, 
-            "❌ Ошибка загрузки товаров",
+        logger.error(f"Error in category {category}: {e}")
+        await _edit_or_send(
+            query,
+            "❌ Error loading products",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(get_text('back', user.id), callback_data='services')]])
         )
 
+
 async def handle_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE, category: str, subcategory: str):
-    """Показать товары в подкатегории."""
     query = update.callback_query
     user = query.from_user
 
@@ -138,7 +165,6 @@ async def handle_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
     try:
         items = db.get_products(category, subcategory=subcategory, lang=user_lang)
-
         categories = db.get_categories(user_lang)
         cat_name = categories.get(category, category)
         subcats = db.get_subcategories(category, lang=user_lang)
@@ -167,33 +193,31 @@ async def handle_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 price = item[3]
                 stock = item[5]
 
-            stock_str = '∞' if stock < 0 else str(stock)
-            btn_text = f"{name} — ${price:.0f} ({get_text('in_stock', user.id)}: {stock_str})"
+            btn_text = f"{name} — ${price:.0f} ({get_text('in_stock', user.id)}: {_stock_str(stock)})"
             keyboard.append([InlineKeyboardButton(btn_text, callback_data=f'prod_{pid}')])
 
         keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data=f'cat_{category}')])
         await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard))
     except Exception as e:
-        logger.error(f"Ошибка в подкатегории {category}/{subcategory}: {e}")
+        logger.error(f"Error in subcategory {category}/{subcategory}: {e}")
         await _edit_or_send(
             query,
-            "❌ Ошибка загрузки товаров",
+            "❌ Error loading products",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(get_text('back', user.id), callback_data=f'cat_{category}')]])
         )
 
 
 async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id):
-    """Показать информацию о товаре"""
     query = update.callback_query
     user = query.from_user
-    
+
     user_data = db.get_user(user.id) or {}
     user_lang = user_data.get('language', 'ru')
     prod = db.get_product(product_id, lang=user_lang)
     if not prod:
-        await _edit_or_send(query, "❌ Товар не найден.")
+        await _edit_or_send(query, "❌ Product not found.")
         return
-    
+
     if isinstance(prod, dict):
         name = prod.get('name', 'Без названия')
         cat = prod.get('category', '')
@@ -210,27 +234,35 @@ async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
         desc = prod[4] or 'Описание отсутствует'
         stock = prod[5]
         photo_url = prod[8] if len(prod) > 8 else None
-    
-    stock_str = '∞' if stock < 0 else str(stock)
+
     balance = db.get_balance(user.id)
-    
+    categories = db.get_categories(user_lang)
+    category_name = categories.get(cat, cat)
+    subcategory_name = None
+    if subcat:
+        subcategory_name = db.get_subcategories(cat, lang=user_lang).get(subcat, subcat)
+
+    path_line = f"📂 {category_name}"
+    if subcategory_name:
+        path_line += f" / {subcategory_name}"
+
     text = (
+        f"{path_line}\n\n"
         f"<b>{name}</b>\n\n"
         f"{desc}\n\n"
-        f"💰 Цена: <b>${price:.2f}</b>\n"
-        f"📦 В наличии: {stock_str}\n"
-        f"💳 Ваш баланс: <b>${balance:.2f}</b>"
+        f"💰 Price: <b>${price:.2f}</b>\n"
+        f"📦 Stock: {_stock_str(stock)}\n"
+        f"💳 Your balance: <b>${balance:.2f}</b>\n\n"
+        f"Tap the button below to purchase this service."
     )
-    
-    back_cb = f"subcat|{cat}|{subcat}" if subcat else f"cat_{cat}"
 
+    back_cb = f"subcat|{cat}|{subcat}" if subcat else f"cat_{cat}"
     keyboard = [
-        [InlineKeyboardButton(f"✅ Купить за ${price:.2f}", callback_data=f'buy_{product_id}')],
-        [InlineKeyboardButton("◀️ Назад к категории", callback_data=f'cat_{cat}')],
-        [InlineKeyboardButton("🏠 Главное меню", callback_data='menu')]
-        [InlineKeyboardButton("◀️ Назад", callback_data=back_cb)],
+        [InlineKeyboardButton(get_text('buy', user.id, price=price), callback_data=f'buy_{product_id}')],
+        [InlineKeyboardButton(get_text('back', user.id), callback_data=back_cb)],
+        [InlineKeyboardButton(get_text('main_menu', user.id), callback_data='menu')],
     ]
-    
+
     if photo_url and os.path.exists(photo_url):
         with open(photo_url, 'rb') as photo_file:
             await query.message.reply_photo(
@@ -240,37 +272,36 @@ async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
                 parse_mode='HTML'
             )
     else:
-        await _edit_or_send(query, 
+        await _edit_or_send(
+            query,
             text,
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='HTML'
         )
 
+
 async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id):
-    """Обработка покупки"""
     query = update.callback_query
     user = query.from_user
-    
+
     user_data = db.get_user(user.id) or {}
     user_lang = user_data.get('language', 'ru')
     prod = db.get_product(product_id, lang=user_lang)
     if not prod:
         await query.answer("❌ Товар не найден", show_alert=True)
         return
-    
+
     if isinstance(prod, dict):
         product_name = prod.get('name', 'Товар')
         product_price = prod.get('price_usd', 0)
         product_category = prod.get('category', '')
-        product_subcategory = prod.get('subcategory')
     else:
         product_name = prod[2]
         product_price = prod[3]
         product_category = prod[1]
-        product_subcategory = None
-    
+
     success, message, product_data = db.purchase(user.id, product_id)
-    
+
     if not success:
         if "Недостаточно средств" in message:
             balance = db.get_balance(user.id)
@@ -283,47 +314,50 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
             )
             keyboard = [
                 [InlineKeyboardButton("💰 Пополнить", callback_data='deposit')],
-                [InlineKeyboardButton("◀️ Назад", callback_data=f'prod_{product_id}')]
+                [InlineKeyboardButton(get_text('back', user.id), callback_data=f'prod_{product_id}')]
             ]
         elif "закончился" in message:
             text = "❌ Товар закончился. Попробуйте другой товар."
-            keyboard = [InlineKeyboardButton("◀️ Назад", callback_data=f'cat_{product_category}')]
+            keyboard = [[InlineKeyboardButton(get_text('back', user.id), callback_data=f'cat_{product_category}')]]
         else:
             text = f"❌ Ошибка: {message}"
-            keyboard = [InlineKeyboardButton("◀️ Назад", callback_data='services')]
-        
-        await _edit_or_send(query, 
-            text, 
-            reply_markup=InlineKeyboardMarkup([keyboard] if not isinstance(keyboard[0], list) else keyboard), 
+            keyboard = [[InlineKeyboardButton(get_text('back', user.id), callback_data='services')]]
+
+        await _edit_or_send(
+            query,
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='HTML'
         )
-    else:
-        for admin_id in ADMIN_IDS:
-            try:
-                await context.bot.send_message(
-                    admin_id,
-                    f"🛒 <b>НОВАЯ ПОКУПКА</b>\n\n"
-                    f"👤 Пользователь: @{user.username or 'нет'}\n"
-                    f"🆔 ID: <code>{user.id}</code>\n"
-                    f"📦 Товар: {product_name}\n"
-                    f"💰 Сумма: ${product_price:.2f}\n\n"
-                    f"🔔 Свяжитесь с покупателем!",
-                    parse_mode='HTML'
-                )
-            except:
-                pass
-        
-        text = (
-            f"✅ <b>Покупка успешно оформлена!</b>\n\n"
-            f"📦 Товар: {product_name}\n"
-            f"💰 Списано: ${product_price:.2f}\n\n"
-            f"🔔 Напишите {SUPPORT_CONTACT} для получения услуги.\n"
-            f"🆔 Ваш ID: <code>{user.id}</code>"
-        )
-        keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data='menu')]]
-        
-        await _edit_or_send(query, 
-            text, 
-            reply_markup=InlineKeyboardMarkup(keyboard), 
-            parse_mode='HTML'
-        )
+        return
+
+    for admin_id in ADMIN_IDS:
+        try:
+            await context.bot.send_message(
+                admin_id,
+                f"🛒 <b>НОВАЯ ПОКУПКА</b>\n\n"
+                f"👤 Пользователь: @{user.username or 'нет'}\n"
+                f"🆔 ID: <code>{user.id}</code>\n"
+                f"📦 Товар: {product_name}\n"
+                f"💰 Сумма: ${product_price:.2f}\n\n"
+                f"🔔 Свяжитесь с покупателем!",
+                parse_mode='HTML'
+            )
+        except Exception:
+            pass
+
+    text = (
+        f"✅ <b>{get_text('purchase_success', user.id)}</b>\n\n"
+        f"📦 Товар: {product_name}\n"
+        f"💰 Списано: ${product_price:.2f}\n\n"
+        f"🔔 Напишите {SUPPORT_CONTACT} для получения услуги.\n"
+        f"🆔 Ваш ID: <code>{user.id}</code>"
+    )
+    keyboard = [[InlineKeyboardButton(get_text('main_menu', user.id), callback_data='menu')]]
+
+    await _edit_or_send(
+        query,
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )

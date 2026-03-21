@@ -35,6 +35,25 @@ async def _edit_or_send(query, text, reply_markup=None, parse_mode=None, **kwarg
         )
 
 
+async def _edit_or_send_with_core_photo(query, text, core_key: str, reply_markup=None, parse_mode=None, **kwargs):
+    photo_file_id = (db.get_main_menu_core().get(core_key, {}) or {}).get('photo_file_id')
+    if not photo_file_id:
+        return await _edit_or_send(query, text, reply_markup=reply_markup, parse_mode=parse_mode, **kwargs)
+
+    try:
+        await query.message.delete()
+    except Exception:
+        pass
+    return await query.get_bot().send_photo(
+        chat_id=query.message.chat_id,
+        photo=photo_file_id,
+        caption=text,
+        reply_markup=reply_markup,
+        parse_mode=parse_mode,
+        **kwargs
+    )
+
+
 
 def _strip_leading_icon(text: str) -> str:
     return re.sub(r'^[^\w]+', '', text or '').strip()
@@ -61,8 +80,9 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(get_text('back', user.id), callback_data='menu')]
     ]
     
-    await _edit_or_send(query, 
+    await _edit_or_send_with_core_photo(query, 
         text,
+        'balance',
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='HTML'
     )
@@ -297,9 +317,10 @@ async def handle_transfer_start(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data.pop('transfer_recipient', None)
     db.set_pending_action(user.id, 'transfer_recipient')
 
-    await _edit_or_send(query, 
+    await _edit_or_send_with_core_photo(query, 
         f"💸 <b>{_strip_leading_icon(get_text('transfer_balance', user.id))}</b>\n\n"
         f"{get_text('enter_transfer_recipient', user.id)}",
+        'transfer',
         reply_markup=cancel_button(user.id),
         parse_mode='HTML'
     )

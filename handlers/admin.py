@@ -54,6 +54,7 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
         keyboard = [
             [InlineKeyboardButton("📊 Статистика", callback_data='admin_stats')],
             [InlineKeyboardButton("📦 Управление товарами", callback_data='admin_products')],
+            [InlineKeyboardButton("📬 Заказы", callback_data='admin_orders')],
             [InlineKeyboardButton("🏠 Главная страница", callback_data='admin_home_menu')],
             [InlineKeyboardButton("🔘 Главное меню", callback_data='admin_menu_editor')],
             [InlineKeyboardButton("👥 Пользователи", callback_data='admin_users')],
@@ -72,6 +73,20 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
 
     elif data == 'admin_products':
         await admin_products_menu(update, context)
+    elif data == 'admin_orders':
+        await admin_orders(update, context)
+    elif data.startswith('admin_order_') and '_status_' not in data:
+        try:
+            await admin_order_details(update, context, int(data.replace('admin_order_', '', 1)))
+        except ValueError:
+            await query.answer("Некорректный ID заказа", show_alert=True)
+    elif data.startswith('admin_order_status_'):
+        try:
+            payload = data.replace('admin_order_status_', '', 1)
+            order_id_str, status = payload.split('_', 1)
+            await admin_order_update_status(update, context, int(order_id_str), status)
+        except ValueError:
+            await query.answer("Некорректный статус заказа", show_alert=True)
 
     elif data == 'admin_home_menu':
         await admin_home_menu(update, context)
@@ -94,6 +109,10 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
         payload = data.replace('admin_menu_core_field_', '', 1)
         key, lang = payload.rsplit('_', 1)
         await admin_menu_core_edit_field_start(update, context, key, lang)
+    elif data.startswith('admin_menu_core_photo_remove_'):
+        await admin_menu_core_remove_photo(update, context, data.replace('admin_menu_core_photo_remove_', ''))
+    elif data.startswith('admin_menu_core_photo_'):
+        await admin_menu_core_edit_photo_start(update, context, data.replace('admin_menu_core_photo_', ''))
     elif data == 'admin_menu_custom':
         await admin_menu_custom_menu(update, context)
     elif data == 'admin_menu_custom_add':
@@ -381,6 +400,7 @@ async def admin_products_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton("✏️ Редактировать товар", callback_data='admin_edit_product')],
         [InlineKeyboardButton("❌ Удалить товар", callback_data='admin_delete_product')],
         [InlineKeyboardButton("📋 Список товаров", callback_data='admin_list_products')],
+        [InlineKeyboardButton("📬 Заказы", callback_data='admin_orders')],
         [InlineKeyboardButton("💰 Управление балансами", callback_data='admin_balance_menu')],
         [InlineKeyboardButton("🎫 Промокоды", callback_data='admin_promo_menu')],
         [InlineKeyboardButton("📢 Рассылка", callback_data='admin_broadcast_menu')],
@@ -829,6 +849,129 @@ async def admin_sales(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin')]]
     await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
+
+def _admin_order_status_label(status: str) -> str:
+    labels = {
+        'pending': '🕒 Ожидает',
+        'in_progress': '⚙️ В работе',
+        'completed': '✅ Завершён',
+        'cancelled': '❌ Отменён',
+    }
+    return labels.get(status, status)
+
+
+def _format_order_user(order: dict) -> str:
+    username = order.get('username')
+    return f"@{username}" if username else f"ID {order.get('user_id')}"
+
+
+async def admin_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    orders = db.get_recent_orders(limit=20)
+
+    if not orders:
+        await _edit_or_send(
+            query,
+            "📬 <b>Заказы</b>\n\nЗаказов пока нет.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin')]]),
+            parse_mode='HTML'
+        )
+        return
+
+    text = "📬 <b>Последние заказы</b>\n\n"
+    keyboard = []
+
+    for order in orders:
+        purchase_date = order.get('purchase_date') or ''
+        try:
+            purchase_date = datetime.fromisoformat(purchase_date).strftime('%d.%m %H:%M')
+        except Exception:
+            purchase_date = order.get('purchase_date') or '-'
+
+        text += (
+            f"• #{order['id']} — {order['product_name']}\n"
+            f"  {_format_order_user(order)} · ${order['amount']}\n"
+            f"  {_admin_order_status_label(order.get('status') or 'completed')} · {purchase_date}\n\n"
+        )
+        keyboard.append([
+            InlineKeyboardButton(
+                f"#{order['id']} · {order['product_name'][:22]}",
+                callback_data=f"admin_order_{order['id']}"
+            )
+        ])
+
+    keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin')])
+    await _edit_or_send(query, text[:3900], reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+
+
+async def admin_order_details(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: int):
+    query = update.callback_query
+    order = db.get_order(order_id)
+    if not order:
+        await query.answer("Заказ не найден", show_alert=True)
+        return
+
+    purchase_date = order.get('purchase_date') or '-'
+    completed_date = order.get('completed_date') or '—'
+    try:
+        purchase_date = datetime.fromisoformat(purchase_date).strftime('%d.%m.%Y %H:%M')
+    except Exception:
+        pass
+    try:
+        completed_date = datetime.fromisoformat(completed_date).strftime('%d.%m.%Y %H:%M') if completed_date != '—' else completed_date
+    except Exception:
+        pass
+
+    text = (
+        f"📦 <b>Заказ #{order['id']}</b>\n\n"
+        f"👤 Покупатель: {_format_order_user(order)}\n"
+        f"🆔 User ID: <code>{order['user_id']}</code>\n"
+        f"📦 Товар: {html.escape(order['product_name'])}\n"
+        f"💰 Сумма: ${order['amount']:.2f}\n"
+        f"📅 Создан: {purchase_date}\n"
+        f"✅ Завершён: {completed_date}\n"
+        f"🏷 Статус: {_admin_order_status_label(order.get('status') or 'completed')}"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("🕒 Ожидает", callback_data=f"admin_order_status_{order_id}_pending")],
+        [InlineKeyboardButton("⚙️ В работе", callback_data=f"admin_order_status_{order_id}_in_progress")],
+        [InlineKeyboardButton("✅ Завершён", callback_data=f"admin_order_status_{order_id}_completed")],
+        [InlineKeyboardButton("❌ Отменён", callback_data=f"admin_order_status_{order_id}_cancelled")],
+        [InlineKeyboardButton("◀️ Назад", callback_data='admin_orders')],
+    ]
+    await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+
+
+async def admin_order_update_status(update: Update, context: ContextTypes.DEFAULT_TYPE, order_id: int, status: str):
+    query = update.callback_query
+    valid_statuses = {'pending', 'in_progress', 'completed', 'cancelled'}
+    if status not in valid_statuses:
+        await query.answer("Некорректный статус", show_alert=True)
+        return
+
+    order = db.get_order(order_id)
+    if not order:
+        await query.answer("Заказ не найден", show_alert=True)
+        return
+
+    if not db.update_order_status(order_id, status):
+        await query.answer("Не удалось обновить статус", show_alert=True)
+        return
+
+    try:
+        await context.bot.send_message(
+            order['user_id'],
+            (
+                f"📦 Статус заказа #{order_id} обновлён.\n\n"
+                f"Товар: {order['product_name']}\n"
+                f"Статус: {_admin_order_status_label(status)}"
+            )
+        )
+    except Exception:
+        pass
+
+    await admin_order_details(update, context, order_id)
 
 async def admin_manage_admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1910,6 +2053,7 @@ def _menu_target_options():
         'balance': '💰 Balance',
         'profile': '👤 Profile',
         'referral': '🔗 Referral',
+        'faq': '❓ FAQ',
         'promo_code': '🎫 Promo code',
         'menu': '🏠 Main menu',
     }
@@ -2082,18 +2226,22 @@ async def admin_menu_core_edit_start(update: Update, context: ContextTypes.DEFAU
     query = update.callback_query
     core = db.get_main_menu_core()
     labels = core.get(key, {})
+    photo_state = "есть" if labels.get('photo_file_id') else "нет"
 
     await _edit_or_send(query, 
         "✏️ <b>Редактирование core-кнопки</b>\n\n"
         f"Ключ: <code>{html.escape(key)}</code>\n"
         f"RU: {html.escape(labels.get('ru') or '-')}\n"
         f"UK: {html.escape(labels.get('uk') or '-')}\n"
-        f"EN: {html.escape(labels.get('en') or '-')}\n\n"
+        f"EN: {html.escape(labels.get('en') or '-')}\n"
+        f"Фото: {photo_state}\n\n"
         "Выберите поле для редактирования:",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("RU", callback_data=f'admin_menu_core_field_{key}_ru')],
             [InlineKeyboardButton("UK", callback_data=f'admin_menu_core_field_{key}_uk')],
             [InlineKeyboardButton("EN", callback_data=f'admin_menu_core_field_{key}_en')],
+            [InlineKeyboardButton("🖼 Обновить фото", callback_data=f'admin_menu_core_photo_{key}')],
+            [InlineKeyboardButton("🗑 Удалить фото", callback_data=f'admin_menu_core_photo_remove_{key}')],
             [InlineKeyboardButton("◀️ Назад", callback_data='admin_menu_core')],
         ]),
         parse_mode='HTML'
@@ -2142,6 +2290,63 @@ async def handle_admin_menu_core_input(update: Update, context: ContextTypes.DEF
         )
     else:
         await update.message.reply_text("❌ Не удалось сохранить кнопку.")
+
+
+async def admin_menu_core_edit_photo_start(update: Update, context: ContextTypes.DEFAULT_TYPE, key: str):
+    query = update.callback_query
+    context.user_data['menu_core_key'] = key
+    db.set_pending_action(query.from_user.id, f'admin_menu_core_photo_{key}')
+    await _edit_or_send(
+        query,
+        f"🖼 <b>Фото для core-кнопки</b>\n\n"
+        f"Ключ: <code>{html.escape(key)}</code>\n"
+        "Отправьте фото, которое будет показываться при открытии этого раздела.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("◀️ Назад", callback_data=f'admin_menu_core_edit_{key}')]
+        ]),
+        parse_mode='HTML'
+    )
+
+
+async def admin_menu_core_remove_photo(update: Update, context: ContextTypes.DEFAULT_TYPE, key: str):
+    query = update.callback_query
+    current = db.get_main_menu_core().get(key, {})
+    current['photo_file_id'] = None
+    ok = db.save_main_menu_core({key: current})
+    await _edit_or_send(
+        query,
+        "✅ Фото удалено." if ok else "❌ Не удалось удалить фото.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("◀️ Назад", callback_data=f'admin_menu_core_edit_{key}')]
+        ])
+    )
+
+
+async def handle_admin_menu_core_photo_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    pending = db.get_pending_action(user.id)
+    if not pending or not pending[0].startswith('admin_menu_core_photo_'):
+        return
+
+    key = pending[0].replace('admin_menu_core_photo_', '', 1)
+    if not update.message.photo:
+        await update.message.reply_text("❌ Отправьте фото.")
+        return
+
+    photo_file_id = update.message.photo[-1].file_id
+    current = db.get_main_menu_core().get(key, {})
+    current['photo_file_id'] = photo_file_id
+    ok = db.save_main_menu_core({key: current})
+
+    db.clear_pending_action(user.id)
+    context.user_data.pop('menu_core_key', None)
+
+    await update.message.reply_text(
+        "✅ Фото сохранено." if ok else "❌ Не удалось сохранить фото.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("◀️ Назад", callback_data=f'admin_menu_core_edit_{key}')]
+        ])
+    )
 
 
 def _build_custom_buttons_text() -> str:

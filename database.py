@@ -1472,6 +1472,7 @@ class Database:
             data.setdefault(key, {})
             for lang, value in labels.items():
                 data[key].setdefault(lang, value)
+            data[key].setdefault('photo_file_id', None)
         return data
 
     def save_main_menu_core(self, data: dict) -> bool:
@@ -1801,9 +1802,9 @@ class Database:
         now = datetime.now().isoformat()
         self.execute(
             """INSERT INTO purchase_history 
-               (user_id, product_id, product_name, amount, purchase_date, completed_date) 
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (user_id, product_id, product_name, amount, now, now),
+               (user_id, product_id, product_name, amount, status, purchase_date, completed_date) 
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, product_id, product_name, amount, 'pending', now, None),
             commit=True
         )
 
@@ -1817,6 +1818,55 @@ class Database:
             fetch=True
         )
         return [dict(row) for row in results] if results else []
+
+    def get_recent_orders(self, limit: int = 20) -> List[dict]:
+        try:
+            results = self.execute(
+                """SELECT ph.id, ph.user_id, ph.product_id, ph.product_name, ph.amount, ph.status,
+                          ph.purchase_date, ph.completed_date, u.username
+                   FROM purchase_history ph
+                   LEFT JOIN users u ON ph.user_id = u.user_id
+                   ORDER BY ph.purchase_date DESC
+                   LIMIT ?""",
+                (limit,),
+                fetch=True
+            )
+            return [dict(row) for row in results] if results else []
+        except Exception as e:
+            logger.error(f"Failed to get recent orders: {e}")
+            return []
+
+    def get_order(self, order_id: int) -> Optional[dict]:
+        try:
+            results = self.execute(
+                """SELECT ph.id, ph.user_id, ph.product_id, ph.product_name, ph.amount, ph.status,
+                          ph.purchase_date, ph.completed_date, u.username
+                   FROM purchase_history ph
+                   LEFT JOIN users u ON ph.user_id = u.user_id
+                   WHERE ph.id = ?""",
+                (order_id,),
+                fetch=True
+            )
+            return dict(results[0]) if results else None
+        except Exception as e:
+            logger.error(f"Failed to get order {order_id}: {e}")
+            return None
+
+    def update_order_status(self, order_id: int, status: str) -> bool:
+        now = datetime.now().isoformat()
+        completed_date = now if status == 'completed' else None
+        try:
+            self.execute(
+                """UPDATE purchase_history
+                   SET status = ?, completed_date = ?
+                   WHERE id = ?""",
+                (status, completed_date, order_id),
+                commit=True
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update order status for {order_id}: {e}")
+            return False
 
     def get_all_purchases(self, limit=50):
         results = self.execute(

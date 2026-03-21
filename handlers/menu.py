@@ -12,6 +12,7 @@ from handlers.payments import (
     handle_transfer_start, handle_transfer_text_input
 )
 from handlers.profile import handle_profile, handle_referral, handle_referral_details, handle_purchase_history
+from handlers.faq import handle_faq, handle_faq_item
 from handlers.admin import (
     handle_admin,
     handle_admin_add_product_input,
@@ -125,6 +126,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await handle_referral_details(update, context)
     elif data == 'purchase_history':
         await handle_purchase_history(update, context)
+    elif data == 'faq':
+        await handle_faq(update, context)
+    elif data.startswith('faq_'):
+        await handle_faq_item(update, context, data.replace('faq_', '', 1))
 
     # Админ-панель (все что связано с админкой, включая рассылки)
     elif (data.startswith('admin') or 
@@ -183,11 +188,15 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         if (
             action == 'admin_add_product_photo_waiting'
             or action == 'admin_home_photo'
+            or action.startswith('admin_menu_core_photo_')
             or action == 'broadcast_photo'
             or (action.startswith('admin_edit_') and action.endswith('_photo_waiting'))
         ):
             if action == 'admin_home_photo':
                 await handle_admin_home_photo_input(update, context)
+            elif action.startswith('admin_menu_core_photo_'):
+                from handlers.admin import handle_admin_menu_core_photo_input
+                await handle_admin_menu_core_photo_input(update, context)
             elif action == 'broadcast_photo':
                 from handlers.admin_broadcast import handle_broadcast_photo_input
                 await handle_broadcast_photo_input(update, context)

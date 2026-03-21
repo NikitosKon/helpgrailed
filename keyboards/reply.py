@@ -42,6 +42,7 @@ def main_menu(user_id):
             InlineKeyboardButton(referral_label, callback_data='referral'),
             InlineKeyboardButton(transfer_label, callback_data='transfer')
         ],
+        [InlineKeyboardButton(get_text('faq', user_id), callback_data='faq')],
         [InlineKeyboardButton(support_label, url='https://t.me/helpgrailed')],
     ]
 
