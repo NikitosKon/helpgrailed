@@ -381,6 +381,16 @@ class Database:
                 self.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS description_ru TEXT", commit=True)
                 self.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS description_uk TEXT", commit=True)
                 self.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS description_en TEXT", commit=True)
+                self.execute(
+                    """ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_type_check""",
+                    commit=True
+                )
+                self.execute(
+                    """ALTER TABLE transactions
+                       ADD CONSTRAINT transactions_type_check
+                       CHECK (type IN ('deposit', 'purchase', 'referral', 'admin_deposit', 'transfer_out', 'transfer_in'))""",
+                    commit=True
+                )
             else:
                 cols = self.execute("PRAGMA table_info(categories)", fetch=True) or []
                 col_names = {row[1] for row in cols}
