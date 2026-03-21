@@ -27,6 +27,7 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton(get_text('deposit', user.id), callback_data='deposit'),
             InlineKeyboardButton(get_text('withdraw', user.id), callback_data='withdraw')
         ],
+        [InlineKeyboardButton(get_text('transfer_balance', user.id), callback_data='transfer')],
         [InlineKeyboardButton(f"🎫 {get_text('promo_code', user.id)}", callback_data='promo_code')],
         [InlineKeyboardButton(get_text('back', user.id), callback_data='menu')]
     ]
@@ -257,3 +258,92 @@ async def handle_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=back_button('balance'),
         parse_mode='HTML'
     )
+
+
+async def handle_transfer_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Старт перевода между пользователями."""
+    query = update.callback_query
+    user = query.from_user
+
+    context.user_data.pop('transfer_recipient', None)
+    db.set_pending_action(user.id, 'transfer_recipient')
+
+    await query.edit_message_text(
+        f"💸 <b>{get_text('transfer_balance', user.id)}</b>\n\n"
+        f"{get_text('enter_transfer_recipient', user.id)}",
+        reply_markup=cancel_button(user.id),
+        parse_mode='HTML'
+    )
+
+
+async def handle_transfer_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, text: str):
+    user = update.effective_user
+    value = (text or "").strip()
+
+    if action == 'transfer_recipient':
+        recipient = db.find_user_by_identifier(value)
+        if not recipient:
+            await update.message.reply_text(get_text('transfer_user_not_found', user.id))
+            return
+        if recipient['user_id'] == user.id:
+            await update.message.reply_text(get_text('transfer_self_error', user.id))
+            return
+
+        context.user_data['transfer_recipient'] = recipient
+        db.set_pending_action(user.id, 'transfer_amount')
+
+        recipient_name = recipient.get('username') or recipient.get('first_name') or str(recipient['user_id'])
+        recipient_display = f"@{recipient_name}" if recipient.get('username') else recipient_name
+        await update.message.reply_text(
+            f"✅ {get_text('transfer_recipient_found', user.id)}: {recipient_display}\n\n"
+            f"{get_text('enter_transfer_amount', user.id)}"
+        )
+        return
+
+    if action == 'transfer_amount':
+        recipient = context.user_data.get('transfer_recipient')
+        if not recipient:
+            db.set_pending_action(user.id, 'transfer_recipient')
+            await update.message.reply_text(get_text('enter_transfer_recipient', user.id))
+            return
+
+        try:
+            amount = float(value.replace(',', '.'))
+        except ValueError:
+            await update.message.reply_text(get_text('transfer_invalid_amount', user.id))
+            return
+
+        if amount <= 0:
+            await update.message.reply_text(get_text('transfer_invalid_amount', user.id))
+            return
+
+        ok, message, saved_recipient = db.transfer_balance(user.id, str(recipient['user_id']), amount)
+        if not ok:
+            if message == 'Insufficient funds':
+                await update.message.reply_text(get_text('transfer_insufficient_funds', user.id))
+            elif message == 'Cannot transfer to self':
+                await update.message.reply_text(get_text('transfer_self_error', user.id))
+            else:
+                await update.message.reply_text(get_text('transfer_user_not_found', user.id))
+            return
+
+        db.clear_pending_action(user.id)
+        context.user_data.pop('transfer_recipient', None)
+
+        recipient_name = saved_recipient.get('username') or saved_recipient.get('first_name') or str(saved_recipient['user_id'])
+        recipient_display = f"@{recipient_name}" if saved_recipient.get('username') else recipient_name
+        await update.message.reply_text(
+            f"{get_text('transfer_success', user.id)}\n\n"
+            f"👤 {recipient_display}\n"
+            f"💰 ${amount:.2f}",
+            reply_markup=back_button('balance', user.id)
+        )
+
+        try:
+            await context.bot.send_message(
+                saved_recipient['user_id'],
+                f"{get_text('transfer_received', saved_recipient['user_id'])}\n\n"
+                f"💰 ${amount:.2f}"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to notify recipient about transfer: {e}")

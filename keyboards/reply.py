@@ -23,6 +23,7 @@ def main_menu(user_id):
     services_label = core.get('services', {}).get(lang) or get_text('services', user_id)
     profile_label = core.get('profile', {}).get(lang) or get_text('profile', user_id)
     referral_label = core.get('referral', {}).get(lang) or get_text('referral', user_id)
+    transfer_label = core.get('transfer', {}).get(lang) or get_text('transfer_balance', user_id)
 
     balance_template = core.get('balance', {}).get(lang) or get_text('balance', user_id, balance=balance)
     try:
@@ -36,7 +37,10 @@ def main_menu(user_id):
             InlineKeyboardButton(balance_label, callback_data='balance'),
             InlineKeyboardButton(profile_label, callback_data='profile')
         ],
-        [InlineKeyboardButton(referral_label, callback_data='referral')],
+        [
+            InlineKeyboardButton(referral_label, callback_data='referral'),
+            InlineKeyboardButton(transfer_label, callback_data='transfer')
+        ],
     ]
 
     for button in db.get_custom_menu_buttons():

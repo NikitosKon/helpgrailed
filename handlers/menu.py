@@ -8,7 +8,8 @@ from handlers.services import handle_services, handle_category, handle_product, 
 from handlers.payments import (
     handle_balance, handle_deposit, handle_withdraw,
     handle_currency_selection, handle_amount_selection,
-    handle_custom_amount, handle_custom_deposit
+    handle_custom_amount, handle_custom_deposit,
+    handle_transfer_start, handle_transfer_text_input
 )
 from handlers.profile import handle_profile, handle_referral, handle_purchase_history
 from handlers.admin import (
@@ -86,6 +87,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await handle_deposit(update, context)
     elif data == 'withdraw':
         await handle_withdraw(update, context)
+    elif data == 'transfer':
+        await handle_transfer_start(update, context)
     elif data.startswith('curr_'):
         currency = data[5:]
         await handle_currency_selection(update, context, currency)
@@ -215,6 +218,10 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await handle_custom_deposit(update, context, text)
         return
 
+    if action in {'transfer_recipient', 'transfer_amount'}:
+        await handle_transfer_text_input(update, context, action, text)
+        return
+
     # Ввод промокода - ИСПРАВЛЕНО!
     if action == 'enter_promo':
         from config import ADMIN_IDS
@@ -331,7 +338,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await handle_admin_menu_core_input(update, context, action, text)
         return
 
-    if action in {'admin_menu_custom_label_ru', 'admin_menu_custom_label_uk', 'admin_menu_custom_label_en', 'admin_menu_custom_url'}:
+    if action in {'admin_menu_custom_label_ru', 'admin_menu_custom_label_uk', 'admin_menu_custom_label_en', 'admin_menu_custom_url', 'admin_menu_custom_target_text'}:
         from handlers.admin import handle_admin_menu_custom_input
         await handle_admin_menu_custom_input(update, context, action, text)
         return

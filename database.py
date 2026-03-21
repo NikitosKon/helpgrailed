@@ -615,6 +615,100 @@ class Database:
         except Exception as e:
             logger.error(f"Failed to add balance for {user_id}: {e}")
             return False
+
+    def find_user_by_identifier(self, identifier: str) -> Optional[dict]:
+        identifier = (identifier or "").strip()
+        if not identifier:
+            return None
+
+        try:
+            if identifier.startswith('@'):
+                identifier = identifier[1:]
+
+            if identifier.isdigit():
+                result = self.execute(
+                    "SELECT * FROM users WHERE user_id = ?",
+                    (int(identifier),),
+                    fetch=True
+                )
+            else:
+                result = self.execute(
+                    "SELECT * FROM users WHERE LOWER(username) = LOWER(?)",
+                    (identifier,),
+                    fetch=True
+                )
+
+            if not result:
+                return None
+            return dict(result[0])
+        except Exception as e:
+            logger.error(f"Failed to find user by identifier {identifier}: {e}")
+            return None
+
+    def transfer_balance(self, sender_id: int, recipient_identifier: str, amount: float) -> Tuple[bool, str, Optional[dict]]:
+        if amount <= 0:
+            return False, "Amount must be positive", None
+
+        recipient = self.find_user_by_identifier(recipient_identifier)
+        if not recipient:
+            return False, "Recipient not found", None
+
+        recipient_id = recipient['user_id']
+        if recipient_id == sender_id:
+            return False, "Cannot transfer to self", None
+
+        now = datetime.now().isoformat()
+        try:
+            self.execute("BEGIN TRANSACTION", commit=False)
+
+            sender_row = self.execute(
+                "SELECT balance FROM users WHERE user_id = ?",
+                (sender_id,),
+                fetch=True
+            )
+            if not sender_row:
+                raise Exception("Sender not found")
+
+            sender_balance = sender_row[0]['balance'] if self.use_postgres else sender_row[0][0]
+            if sender_balance < amount:
+                raise Exception("Insufficient funds")
+
+            self.execute(
+                "UPDATE users SET balance = balance - ? WHERE user_id = ?",
+                (amount, sender_id),
+                commit=False
+            )
+            self.execute(
+                "UPDATE users SET balance = balance + ? WHERE user_id = ?",
+                (amount, recipient_id),
+                commit=False
+            )
+            self.execute(
+                """INSERT INTO transactions
+                   (user_id, amount, type, status, completed_at, currency, metadata)
+                   VALUES (?, ?, 'transfer_out', 'completed', ?, 'USD', ?)""",
+                (sender_id, amount, now, json.dumps({
+                    'recipient_id': recipient_id,
+                    'recipient_username': recipient.get('username'),
+                })),
+                commit=False
+            )
+            self.execute(
+                """INSERT INTO transactions
+                   (user_id, amount, type, status, completed_at, currency, metadata)
+                   VALUES (?, ?, 'transfer_in', 'completed', ?, 'USD', ?)""",
+                (recipient_id, amount, now, json.dumps({
+                    'sender_id': sender_id,
+                })),
+                commit=False
+            )
+
+            self.conn.commit()
+            return True, "ok", recipient
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"Failed to transfer balance from {sender_id}: {e}")
+            return False, str(e), None
     
     def get_products(self, category: Optional[str] = None, 
                     show_all: bool = False, lang: str = 'ru') -> List[dict]:
@@ -852,6 +946,7 @@ class Database:
             'balance': {'ru': '💰 Баланс: ${balance}', 'uk': '💰 Баланс: ${balance}', 'en': '💰 Balance: ${balance}'},
             'profile': {'ru': '👤 Профиль', 'uk': '👤 Профіль', 'en': '👤 Profile'},
             'referral': {'ru': '🔗 Рефералка', 'uk': '🔗 Рефералка', 'en': '🔗 Referral'},
+            'transfer': {'ru': '💸 Перевести средства', 'uk': '💸 Переказати кошти', 'en': '💸 Transfer funds'},
         }
         data = self.get_setting_json('main_menu_core', default=default) or {}
         for key, labels in default.items():
