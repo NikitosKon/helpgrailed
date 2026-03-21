@@ -1,9 +1,6 @@
 import logging
-import os
 import re
-import threading
 from datetime import datetime, timedelta
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
@@ -40,31 +37,6 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
-
-
-class HealthcheckHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(b"Bot is running")
-
-    def do_HEAD(self):
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.end_headers()
-
-    def log_message(self, format, *args):
-        return
-
-
-def start_healthcheck_server():
-    port = int(os.environ.get("PORT", "10000"))
-    server = ThreadingHTTPServer(("0.0.0.0", port), HealthcheckHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    logger.info(f"✅ Healthcheck server started on port {port}")
-    return server
 
 
 async def set_commands(application: Application):
@@ -239,8 +211,7 @@ async def post_init(application: Application):
 
 
 def main():
-    logger.info("Starting bot with healthcheck server...")
-    start_healthcheck_server()
+    logger.info("Starting bot...")
 
     application = (
         Application.builder()
