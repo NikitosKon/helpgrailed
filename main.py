@@ -27,6 +27,7 @@ from handlers.commands import (
     balance_command,
     services_command,
     referral_command,
+    faq_command,
     help_command,
     admin_command,
     fix_categories_command,
@@ -281,6 +282,24 @@ async def post_init(application: Application):
     logger.info("Bot initialized successfully")
 
 
+async def set_commands(application: Application):
+    """Установка команд бота."""
+    commands = [
+        ("start", "🚀 Запустить бота"),
+        ("menu", "🏠 Главное меню"),
+        ("profile", "👤 Мой профиль"),
+        ("balance", "💰 Мой баланс"),
+        ("services", "🛒 Услуги"),
+        ("referral", "🔗 Рефералка"),
+        ("faq", "❓ FAQ"),
+        ("help", "❓ Помощь"),
+        ("language", "🌐 Выбрать язык"),
+        ("admin", "👑 Админ-панель"),
+    ]
+    await application.bot.set_my_commands(commands)
+    logger.info("✅ Команды бота установлены")
+
+
 def main():
     """Запуск бота"""
     logger.info("Starting bot with healthcheck server...")
@@ -305,6 +324,7 @@ def main():
     application.add_handler(CommandHandler("balance", balance_command))
     application.add_handler(CommandHandler("services", services_command))
     application.add_handler(CommandHandler("referral", referral_command))
+    application.add_handler(CommandHandler("faq", faq_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("language", language_command))
     application.add_handler(CommandHandler("admin", admin_command))

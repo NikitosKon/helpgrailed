@@ -2,12 +2,17 @@ from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from database import db
-from keyboards.reply import main_menu, back_button, categories_menu
+from keyboards.reply import main_menu, back_button, categories_menu, get_text
 from config import SUPPORT_CONTACT, ADMIN_IDS
 import logging
 
 
 logger = logging.getLogger(__name__)
+
+
+def _user_lang(user_id: int) -> str:
+    user = db.get_user(user_id) or {}
+    return user.get('language', 'ru')
 
 async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /menu - главное меню"""
@@ -371,3 +376,89 @@ async def force_add_categories(update: Update, context: ContextTypes.DEFAULT_TYP
             text += f"❌ {ru} - ошибка: {e}\n"
     
     await update.message.reply_text(text, parse_mode='HTML')
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /help - справка."""
+    user = update.effective_user
+    lang = _user_lang(user.id)
+
+    help_texts = {
+        'ru': (
+            "❓ <b>Помощь</b>\n\n"
+            "🔹 <b>Доступные команды:</b>\n"
+            "• /start - Запустить бота\n"
+            "• /menu - Главное меню\n"
+            "• /profile - Мой профиль\n"
+            "• /balance - Мой баланс\n"
+            "• /services - Услуги\n"
+            "• /referral - Реферальная программа\n"
+            "• /faq - FAQ\n"
+            "• /language - Сменить язык\n"
+            "• /admin - Админ-панель (для админов)\n\n"
+            f"📞 <b>Поддержка:</b> {SUPPORT_CONTACT}\n"
+            "📢 <b>Канал:</b> @helpergrailed"
+        ),
+        'uk': (
+            "❓ <b>Допомога</b>\n\n"
+            "🔹 <b>Доступні команди:</b>\n"
+            "• /start - Запустити бота\n"
+            "• /menu - Головне меню\n"
+            "• /profile - Мій профіль\n"
+            "• /balance - Мій баланс\n"
+            "• /services - Послуги\n"
+            "• /referral - Реферальна програма\n"
+            "• /faq - FAQ\n"
+            "• /language - Змінити мову\n"
+            "• /admin - Адмін-панель (для адмінів)\n\n"
+            f"📞 <b>Підтримка:</b> {SUPPORT_CONTACT}\n"
+            "📢 <b>Канал:</b> @helpergrailed"
+        ),
+        'en': (
+            "❓ <b>Help</b>\n\n"
+            "🔹 <b>Available commands:</b>\n"
+            "• /start - Start the bot\n"
+            "• /menu - Main menu\n"
+            "• /profile - My profile\n"
+            "• /balance - My balance\n"
+            "• /services - Services\n"
+            "• /referral - Referral program\n"
+            "• /faq - FAQ\n"
+            "• /language - Change language\n"
+            "• /admin - Admin panel (for admins)\n\n"
+            f"📞 <b>Support:</b> {SUPPORT_CONTACT}\n"
+            "📢 <b>Channel:</b> @helpergrailed"
+        ),
+    }
+
+    await update.message.reply_text(
+        help_texts.get(lang, help_texts['ru']),
+        reply_markup=back_button('menu'),
+        parse_mode='HTML'
+    )
+
+
+async def faq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /faq - быстрые ответы."""
+    user = update.effective_user
+    lang = _user_lang(user.id)
+
+    labels = {
+        'how_order': {'ru': 'Как оформить заказ', 'uk': 'Як оформити замовлення', 'en': 'How to order'},
+        'after_payment': {'ru': 'Что делать после оплаты', 'uk': 'Що робити після оплати', 'en': 'What after payment'},
+        'timing': {'ru': 'Сроки выполнения', 'uk': 'Терміни виконання', 'en': 'Fulfillment timing'},
+        'refunds': {'ru': 'Возвраты и споры', 'uk': 'Повернення та спори', 'en': 'Refunds and disputes'},
+        'deposit': {'ru': 'Депозит и вывод', 'uk': 'Депозит і виведення', 'en': 'Deposit and withdrawal'},
+    }
+    order = ['how_order', 'after_payment', 'timing', 'refunds', 'deposit']
+    keyboard = [
+        [InlineKeyboardButton(labels[key].get(lang, labels[key]['ru']), callback_data=f'faq_{key}')]
+        for key in order
+    ]
+    keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data='menu')])
+
+    await update.message.reply_text(
+        f"<b>{get_text('faq', user.id)}</b>\n\n{get_text('faq_intro', user.id)}",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )

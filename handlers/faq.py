@@ -151,7 +151,7 @@ async def handle_faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await _edit_or_send(
         query,
-        f"❓ <b>{get_text('faq', user.id)}</b>\n\n{get_text('faq_intro', user.id)}",
+        f"<b>{get_text('faq', user.id)}</b>\n\n{get_text('faq_intro', user.id)}",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='HTML'
     )

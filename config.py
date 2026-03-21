@@ -22,7 +22,7 @@ class Config:
         # Контакты
         self.ADMIN_CONTACT = os.getenv('ADMIN_CONTACT', '@helpgrailed')
         self.SUPPORT_CONTACT = os.getenv('SUPPORT_CONTACT', '@helpgrailed')
-        self.CHANNEL_URL = os.getenv('CHANNEL_URL', 'https://t.me/helpgrailed')
+        self.CHANNEL_URL = os.getenv('CHANNEL_URL', 'https://t.me/helpergrailed')
         
         # База данных
         self.DB_FILE = os.getenv('DB_FILE', 'helpgrailed_bot.db')
