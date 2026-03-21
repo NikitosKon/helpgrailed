@@ -1796,7 +1796,7 @@ async def handle_admin_photo_input(update: Update, context: ContextTypes.DEFAULT
 
     photo = update.message.photo[-1]
     photo_path = await download_telegram_photo(photo.file_id, context)
-    if not photo_path:
+    if action not in {'admin_add_category_photo'} and not action.startswith('admin_edit_category_photo_') and not photo_path:
         await update.message.reply_text("❌ Не удалось сохранить фото. Попробуйте ещё раз.")
         return
 
@@ -1862,13 +1862,13 @@ async def handle_admin_photo_input(update: Update, context: ContextTypes.DEFAULT
         return
 
     if action == 'admin_add_category_photo':
-        context.user_data['new_category_photo_url'] = photo_path
+        context.user_data['new_category_photo_url'] = photo.file_id
         cat_id = context.user_data['new_category_id']
         name_ru = context.user_data['new_category_name_ru']
         name_uk = context.user_data.get('new_category_name_uk')
         name_en = context.user_data.get('new_category_name_en')
 
-        if db.add_category(cat_id, name_ru, name_uk, name_en, photo_url=photo_path):
+        if db.add_category(cat_id, name_ru, name_uk, name_en, photo_url=photo.file_id):
             await update.message.reply_text(
                 "✅ Категория успешно добавлена!",
                 reply_markup=InlineKeyboardMarkup([
@@ -1892,7 +1892,7 @@ async def handle_admin_photo_input(update: Update, context: ContextTypes.DEFAULT
             db.clear_pending_action(user.id)
             return
 
-        if db.update_category(cat_id, photo_url=photo_path):
+        if db.update_category(cat_id, photo_url=photo.file_id):
             await update.message.reply_text(
                 "✅ Фото категории обновлено!",
                 reply_markup=InlineKeyboardMarkup([

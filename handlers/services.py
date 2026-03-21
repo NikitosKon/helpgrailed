@@ -55,6 +55,38 @@ async def _edit_or_send_with_core_photo(query, text, core_key: str, reply_markup
     )
 
 
+async def _send_photo_or_text(query, text, photo_source=None, reply_markup=None, parse_mode=None, **kwargs):
+    if photo_source:
+        if os.path.exists(photo_source):
+            with open(photo_source, 'rb') as photo_file:
+                return await query.message.reply_photo(
+                    photo=photo_file,
+                    caption=text,
+                    reply_markup=reply_markup,
+                    parse_mode=parse_mode,
+                    **kwargs
+                )
+        try:
+            return await query.get_bot().send_photo(
+                chat_id=query.message.chat_id,
+                photo=photo_source,
+                caption=text,
+                reply_markup=reply_markup,
+                parse_mode=parse_mode,
+                **kwargs
+            )
+        except Exception:
+            pass
+
+    return await _edit_or_send(
+        query,
+        text,
+        reply_markup=reply_markup,
+        parse_mode=parse_mode,
+        **kwargs
+    )
+
+
 def _stock_str(stock: int) -> str:
     return 'в€ћ' if stock < 0 else str(stock)
 
@@ -109,15 +141,12 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
             ]
             keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data='services')])
 
-            if category_photo and os.path.exists(category_photo):
-                with open(category_photo, 'rb') as photo_file:
-                    await query.message.reply_photo(
-                        photo=photo_file,
-                        caption=text,
-                        reply_markup=InlineKeyboardMarkup(keyboard)
-                    )
-            else:
-                await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard))
+            await _send_photo_or_text(
+                query,
+                text,
+                photo_source=category_photo,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
             return
 
         items = db.get_products(category, lang=user_lang)
@@ -151,15 +180,12 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
 
         keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data='services')])
 
-        if category_photo and os.path.exists(category_photo):
-            with open(category_photo, 'rb') as photo_file:
-                await query.message.reply_photo(
-                    photo=photo_file,
-                    caption=text,
-                    reply_markup=InlineKeyboardMarkup(keyboard)
-                )
-        else:
-            await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard))
+        await _send_photo_or_text(
+            query,
+            text,
+            photo_source=category_photo,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
     except Exception as e:
         logger.error(f"Error in category {category}: {e}")
