@@ -945,6 +945,32 @@ class Database:
             self.conn.rollback()
             logger.error(f"Failed to register user {user_id}: {e}")
             return False
+
+    def sync_user_profile(self, user_id: int, username: str = None, first_name: str = None) -> bool:
+        try:
+            updates = []
+            params = []
+
+            if username is not None:
+                updates.append("username = ?")
+                params.append(username)
+            if first_name is not None:
+                updates.append("first_name = ?")
+                params.append(first_name)
+
+            updates.append("last_active = ?")
+            params.append(datetime.now().isoformat())
+            params.append(user_id)
+
+            self.execute(
+                f"UPDATE users SET {', '.join(updates)} WHERE user_id = ?",
+                tuple(params),
+                commit=True
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to sync user profile {user_id}: {e}")
+            return False
     
     def update_activity(self, user_id: int):
         self.execute(
@@ -986,6 +1012,7 @@ class Database:
         try:
             if identifier.startswith('@'):
                 identifier = identifier[1:]
+            identifier = identifier.strip()
 
             if identifier.isdigit():
                 result = self.execute(
@@ -995,7 +1022,7 @@ class Database:
                 )
             else:
                 result = self.execute(
-                    "SELECT * FROM users WHERE LOWER(username) = LOWER(?)",
+                    "SELECT * FROM users WHERE LOWER(TRIM(username)) = LOWER(?)",
                     (identifier,),
                     fetch=True
                 )

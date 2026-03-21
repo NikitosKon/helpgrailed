@@ -79,6 +79,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
     
+    db.sync_user_profile(user.id, user.username, user.first_name)
+
     # Если пользователь существует - показываем меню на его языке
     lang = existing_user.get('language', 'ru')
     
