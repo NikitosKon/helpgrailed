@@ -62,6 +62,8 @@ class Config:
                 'transfer_insufficient_funds': "❌ Недостаточно средств на балансе.",
                 'transfer_success': "✅ Перевод выполнен.",
                 'transfer_received': "💸 Вам поступил перевод",
+                'support_button': "🆘 Тех поддержка",
+                'transfer_unexpected_error': "❌ Ошибка при переводе. Попробуйте ещё раз.",
                 'buy': "✅ Купить за ${price:.2f}",
                 'choose_category': "📂 Выберите категорию:",
                 'choose_item': "Выберите товар:",
@@ -75,6 +77,8 @@ class Config:
                 'your_link': "Ваша ссылка",
                 'invited': "Приглашено",
                 'earned': "Заработано",
+                'referral_details': "Подробная статистика",
+                'no_referrals_yet': "У вас пока нет приглашённых пользователей.",
                 'error': "Ошибка",
             },
             'en': {
@@ -98,6 +102,8 @@ class Config:
                 'transfer_insufficient_funds': "❌ Insufficient balance.",
                 'transfer_success': "✅ Transfer completed.",
                 'transfer_received': "💸 You received a transfer",
+                'support_button': "🆘 Support",
+                'transfer_unexpected_error': "❌ Transfer failed. Please try again.",
                 'buy': "✅ Buy for ${price:.2f}",
                 'choose_category': "📂 Choose category:",
                 'choose_item': "Choose product:",
@@ -111,6 +117,8 @@ class Config:
                 'your_link': "Your link",
                 'invited': "Invited",
                 'earned': "Earned",
+                'referral_details': "Detailed stats",
+                'no_referrals_yet': "You have no invited users yet.",
                 'error': "Error",
             },
             'uk': {
@@ -134,6 +142,8 @@ class Config:
                 'transfer_insufficient_funds': "❌ Недостатньо коштів на балансі.",
                 'transfer_success': "✅ Переказ виконано.",
                 'transfer_received': "💸 Вам надійшов переказ",
+                'support_button': "🆘 Тех підтримка",
+                'transfer_unexpected_error': "❌ Помилка переказу. Спробуйте ще раз.",
                 'buy': "✅ Купити за ${price:.2f}",
                 'choose_category': "📂 Виберіть категорію:",
                 'choose_item': "Виберіть товар:",
@@ -147,6 +157,8 @@ class Config:
                 'your_link': "Ваше посилання",
                 'invited': "Запрошено",
                 'earned': "Зароблено",
+                'referral_details': "Детальна статистика",
+                'no_referrals_yet': "У вас ще немає запрошених користувачів.",
                 'error': "Помилка",
             }
         }

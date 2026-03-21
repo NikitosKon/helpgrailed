@@ -11,7 +11,7 @@ from handlers.payments import (
     handle_custom_amount, handle_custom_deposit,
     handle_transfer_start, handle_transfer_text_input
 )
-from handlers.profile import handle_profile, handle_referral, handle_purchase_history
+from handlers.profile import handle_profile, handle_referral, handle_referral_details, handle_purchase_history
 from handlers.admin import (
     handle_admin,
     handle_admin_add_product_input,
@@ -115,6 +115,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await handle_profile(update, context)
     elif data == 'referral':
         await handle_referral(update, context)
+    elif data == 'referral_details':
+        await handle_referral_details(update, context)
     elif data == 'purchase_history':
         await handle_purchase_history(update, context)
 

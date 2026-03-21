@@ -1660,6 +1660,7 @@ async def admin_menu_core_menu(update: Update, context: ContextTypes.DEFAULT_TYP
         [InlineKeyboardButton("👤 Profile", callback_data='admin_menu_core_edit_profile')],
         [InlineKeyboardButton("🔗 Referral", callback_data='admin_menu_core_edit_referral')],
         [InlineKeyboardButton("💸 Transfer", callback_data='admin_menu_core_edit_transfer')],
+        [InlineKeyboardButton("🆘 Support", callback_data='admin_menu_core_edit_support')],
         [InlineKeyboardButton("◀️ Назад", callback_data='admin_menu_editor')],
     ]
     await query.edit_message_text(

@@ -5,10 +5,15 @@ from keyboards.reply import deposit_menu, currency_menu, amount_menu, get_text, 
 from crypto import create_crypto_invoice
 from config import ADMIN_CONTACT, CRYPTO_CURRENCIES
 import logging
+import re
 from datetime import datetime
 import json  # Добавлен импорт
 
 logger = logging.getLogger(__name__)
+
+
+def _strip_leading_icon(text: str) -> str:
+    return re.sub(r'^[^\w]+', '', text or '').strip()
 
 async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать баланс"""
@@ -269,7 +274,7 @@ async def handle_transfer_start(update: Update, context: ContextTypes.DEFAULT_TY
     db.set_pending_action(user.id, 'transfer_recipient')
 
     await query.edit_message_text(
-        f"💸 <b>{get_text('transfer_balance', user.id)}</b>\n\n"
+        f"💸 <b>{_strip_leading_icon(get_text('transfer_balance', user.id))}</b>\n\n"
         f"{get_text('enter_transfer_recipient', user.id)}",
         reply_markup=cancel_button(user.id),
         parse_mode='HTML'
@@ -323,8 +328,10 @@ async def handle_transfer_text_input(update: Update, context: ContextTypes.DEFAU
                 await update.message.reply_text(get_text('transfer_insufficient_funds', user.id))
             elif message == 'Cannot transfer to self':
                 await update.message.reply_text(get_text('transfer_self_error', user.id))
-            else:
+            elif message == 'Recipient not found':
                 await update.message.reply_text(get_text('transfer_user_not_found', user.id))
+            else:
+                await update.message.reply_text(get_text('transfer_unexpected_error', user.id))
             return
 
         db.clear_pending_action(user.id)

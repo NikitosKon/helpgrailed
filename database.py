@@ -659,8 +659,6 @@ class Database:
 
         now = datetime.now().isoformat()
         try:
-            self.execute("BEGIN TRANSACTION", commit=False)
-
             sender_row = self.execute(
                 "SELECT balance FROM users WHERE user_id = ?",
                 (sender_id,),
@@ -947,6 +945,7 @@ class Database:
             'profile': {'ru': '👤 Профиль', 'uk': '👤 Профіль', 'en': '👤 Profile'},
             'referral': {'ru': '🔗 Рефералка', 'uk': '🔗 Рефералка', 'en': '🔗 Referral'},
             'transfer': {'ru': '💸 Перевести средства', 'uk': '💸 Переказати кошти', 'en': '💸 Transfer funds'},
+            'support': {'ru': '🆘 Тех поддержка', 'uk': '🆘 Тех підтримка', 'en': '🆘 Support'},
         }
         data = self.get_setting_json('main_menu_core', default=default) or {}
         for key, labels in default.items():

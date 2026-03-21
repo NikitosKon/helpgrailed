@@ -3,6 +3,11 @@ from telegram.ext import ContextTypes
 from database import db
 from keyboards.reply import back_button, get_text
 from datetime import datetime
+import re
+
+
+def _strip_leading_icon(text: str) -> str:
+    return re.sub(r'^[^\w]+', '', text or '').strip()
 
 async def handle_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Профиль пользователя"""
@@ -133,9 +138,9 @@ async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         earned = 0
     
-    # Используем get_text для перевода
+    referral_title = _strip_leading_icon(get_text('referral', user.id))
     text = (
-        f"🔗 <b>{get_text('referral', user.id)}</b>\n\n"
+        f"🔗 <b>{referral_title}</b>\n\n"
         f"{get_text('referral_description', user.id)}\n\n"
         f"📎 {get_text('your_link', user.id)}:\n<code>{ref_link}</code>\n\n"
         f"👥 {get_text('invited', user.id)}: {referrals_count}\n"
@@ -144,6 +149,57 @@ async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(
         text,
-        reply_markup=back_button('menu', user.id),
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"📋 {get_text('referral_details', user.id)}", callback_data='referral_details')],
+            [InlineKeyboardButton(get_text('back', user.id), callback_data='menu')]
+        ]),
+        parse_mode='HTML'
+    )
+
+
+async def handle_referral_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Подробная статистика по рефералам."""
+    query = update.callback_query
+    user = query.from_user
+
+    rows = db.execute(
+        """SELECT r.referral_id, r.bonus, r.purchase_count, r.total_earned, r.created_at,
+                  u.username, u.first_name
+           FROM referrals r
+           LEFT JOIN users u ON r.referral_id = u.user_id
+           WHERE r.referrer_id = ?
+           ORDER BY r.created_at DESC
+           LIMIT 20""",
+        (user.id,),
+        fetch=True
+    ) or []
+
+    if not rows:
+        text = (
+            f"📋 <b>{get_text('referral_details', user.id)}</b>\n\n"
+            f"{get_text('no_referrals_yet', user.id)}"
+        )
+    else:
+        lines = [f"📋 <b>{get_text('referral_details', user.id)}</b>", ""]
+        for index, row in enumerate(rows, 1):
+            item = dict(row)
+            username = item.get('username')
+            display_name = f"@{username}" if username else (item.get('first_name') or str(item.get('referral_id')))
+            purchase_count = item.get('purchase_count') or 0
+            total_earned = float(item.get('total_earned') or item.get('bonus') or 0)
+            lines.append(
+                f"{index}. {display_name}\n"
+                f"ID: <code>{item.get('referral_id')}</code>\n"
+                f"{get_text('purchases_label', user.id)}: {purchase_count}\n"
+                f"{get_text('earned', user.id)}: ${total_earned:.2f}"
+            )
+            lines.append("")
+        text = "\n".join(lines).strip()
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton(get_text('back', user.id), callback_data='referral')]
+        ]),
         parse_mode='HTML'
     )
