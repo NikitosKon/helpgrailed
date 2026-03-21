@@ -67,13 +67,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await handle_services(update, context)
     elif data.startswith('cat_'):
         await handle_category(update, context, data[4:])
-    elif data.startswith('subcat_'):
-        payload = data[len('subcat_'):]
-        if '_' not in payload:
+    elif data.startswith('subcat|'):
+        parts = data.split('|', 2)
+        if len(parts) != 3 or not parts[1] or not parts[2]:
             await query.edit_message_text("Некорректная подкатегория")
         else:
-            cat_id, subcat_id = payload.split('_', 1)
-            await handle_subcategory(update, context, cat_id, subcat_id)
+            await handle_subcategory(update, context, parts[1], parts[2])
     elif data.startswith('prod_'):
         try:
             product_id = int(data[5:])

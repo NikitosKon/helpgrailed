@@ -69,7 +69,7 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
 
             keyboard = []
             for subcat_id, subcat_name in subcats.items():
-                keyboard.append([InlineKeyboardButton(subcat_name, callback_data=f"subcat_{category}_{subcat_id}")])
+                keyboard.append([InlineKeyboardButton(subcat_name, callback_data=f"subcat|{category}|{subcat_id}")])
             keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data='services')])
 
             await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard))
@@ -222,7 +222,7 @@ async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
         f"💳 Ваш баланс: <b>${balance:.2f}</b>"
     )
     
-    back_cb = f"subcat_{cat}_{subcat}" if subcat else f"cat_{cat}"
+    back_cb = f"subcat|{cat}|{subcat}" if subcat else f"cat_{cat}"
 
     keyboard = [
         [InlineKeyboardButton(f"✅ Купить за ${price:.2f}", callback_data=f'buy_{product_id}')],

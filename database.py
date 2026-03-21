@@ -14,8 +14,21 @@ from utils.translator import build_i18n_triplet
 logger = logging.getLogger(__name__)
 
 DEFAULT_ROOT_CATEGORIES = {
-    'grailed': {'ru': '📂 Grailed', 'uk': '📂 Grailed', 'en': '📂 Grailed'},
-    'support': None,  # filled from DEFAULT_CATEGORIES at runtime (see seed_default_categories)
+    'call_services': {'ru': '♠️ Call services', 'uk': '♠️ Call services', 'en': '♠️ Call services'},
+    'ebay_services': {'ru': '♠️ eBay services', 'uk': '♠️ eBay services', 'en': '♠️ eBay services'},
+    'grailed_services': {'ru': '♠️ Grailed services', 'uk': '♠️ Grailed services', 'en': '♠️ Grailed services'},
+    'additional_services': {'ru': '♠️ Additional services', 'uk': '♠️ Additional services', 'en': '♠️ Additional services'},
+    'paypal_services': {'ru': '♠️ PayPal services', 'uk': '♠️ PayPal services', 'en': '♠️ PayPal services'},
+    'support': {'ru': '🆘 Тех поддержка', 'uk': '🆘 Тех підтримка', 'en': '🆘 Technical Support'},
+}
+
+DEFAULT_SERVICE_SUBCATEGORIES = {
+    # Each top-level service has at least one subcategory by default (editable in admin).
+    'call_services': 'call_services',
+    'ebay_services': 'ebay_services',
+    'grailed_services': 'grailed_services',
+    'additional_services': 'additional_services',
+    'paypal_services': 'paypal_services',
 }
 
 DEFAULT_CATEGORIES = {
@@ -494,9 +507,128 @@ class Database:
                     commit=True
                 )
 
-            self._bootstrap_default_hierarchy_if_needed()
+            self._bootstrap_vinted_hierarchy_if_needed()
         except Exception as e:
             logger.warning(f"Schema compatibility migration skipped: {e}")
+
+    def _bootstrap_vinted_hierarchy_if_needed(self):
+        """v3 bootstrap: multiple top-level services, each with subcategories."""
+        try:
+            if self.get_setting('category_hierarchy_v3_done') == '1':
+                return
+        except Exception:
+            return
+
+        try:
+            now = datetime.now().isoformat()
+
+            roots = [
+                ('call_services', DEFAULT_ROOT_CATEGORIES['call_services'], 0),
+                ('ebay_services', DEFAULT_ROOT_CATEGORIES['ebay_services'], 10),
+                ('grailed_services', DEFAULT_ROOT_CATEGORIES['grailed_services'], 20),
+                ('additional_services', DEFAULT_ROOT_CATEGORIES['additional_services'], 30),
+                ('paypal_services', DEFAULT_ROOT_CATEGORIES['paypal_services'], 40),
+                ('support', DEFAULT_ROOT_CATEGORIES['support'], 50),
+            ]
+            for cat_id, names, sort_order in roots:
+                existing = self.execute("SELECT cat_id FROM categories WHERE cat_id = ?", (cat_id,), fetch=True)
+                if not existing:
+                    self.execute(
+                        """INSERT INTO categories
+                           (cat_id, name_ru, name_uk, name_en, photo_url, sort_order, created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (cat_id, names.get('ru'), names.get('uk'), names.get('en'), None, sort_order, now, now),
+                        commit=True
+                    )
+                else:
+                    self.execute(
+                        """UPDATE categories
+                           SET name_ru = COALESCE(?, name_ru),
+                               name_uk = COALESCE(?, name_uk),
+                               name_en = COALESCE(?, name_en),
+                               sort_order = ?
+                           WHERE cat_id = ?""",
+                        (names.get('ru'), names.get('uk'), names.get('en'), sort_order, cat_id),
+                        commit=True
+                    )
+
+            # Ensure each root has at least one subcategory with the same label.
+            sub_sort = 0
+            for parent_cat_id, subcat_id in DEFAULT_SERVICE_SUBCATEGORIES.items():
+                names = DEFAULT_ROOT_CATEGORIES.get(parent_cat_id, {})
+                existing = self.execute("SELECT subcat_id FROM subcategories WHERE subcat_id = ?", (subcat_id,), fetch=True)
+                if not existing:
+                    self.execute(
+                        """INSERT INTO subcategories
+                           (subcat_id, parent_cat_id, name_ru, name_uk, name_en, photo_url, sort_order, created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (subcat_id, parent_cat_id, names.get('ru'), names.get('uk'), names.get('en'), None, sub_sort, now, now),
+                        commit=True
+                    )
+                else:
+                    self.execute(
+                        """UPDATE subcategories
+                           SET parent_cat_id = ?,
+                               name_ru = COALESCE(?, name_ru),
+                               name_uk = COALESCE(?, name_uk),
+                               name_en = COALESCE(?, name_en),
+                               sort_order = ?
+                           WHERE subcat_id = ?""",
+                        (parent_cat_id, names.get('ru'), names.get('uk'), names.get('en'), sub_sort, subcat_id),
+                        commit=True
+                    )
+                sub_sort += 10
+
+            legacy_to_root = {
+                'call_service': 'call_services',
+                'ebay': 'ebay_services',
+                'paypal': 'paypal_services',
+                'grailed_accounts': 'grailed_services',
+                'grailed_likes': 'grailed_services',
+            }
+
+            # Migrate old flat categories.
+            for legacy_cat, root in legacy_to_root.items():
+                self.execute(
+                    "UPDATE products SET category = ?, subcategory = ? WHERE category = ?",
+                    (root, root, legacy_cat),
+                    commit=True
+                )
+
+            # Migrate from v1 layout: category='grailed' + subcategory in legacy.
+            for legacy_cat, root in legacy_to_root.items():
+                self.execute(
+                    "UPDATE products SET category = ?, subcategory = ? WHERE category = ? AND subcategory = ?",
+                    (root, root, 'grailed', legacy_cat),
+                    commit=True
+                )
+
+            # Migrate from previous intermediate layout: category='vinted_services', subcategory is already a root id.
+            self.execute(
+                """UPDATE products
+                   SET category = subcategory, subcategory = subcategory
+                   WHERE category = ? AND subcategory IN (?, ?, ?, ?, ?)""",
+                ('vinted_services', 'call_services', 'ebay_services', 'grailed_services', 'additional_services', 'paypal_services'),
+                commit=True
+            )
+
+            # Cleanup known legacy root categories (flat schema / v1 root).
+            for legacy_cat in tuple(legacy_to_root.keys()) + ('vinted_services', 'grailed'):
+                try:
+                    self.execute("DELETE FROM categories WHERE cat_id = ?", (legacy_cat,), commit=True)
+                except Exception:
+                    pass
+
+            # Cleanup legacy subcategories if any (from v1).
+            # Cleanup legacy subcategories (from v1) that may conflict with new layout.
+            try:
+                self.execute("DELETE FROM subcategories WHERE parent_cat_id = ?", ('grailed',), commit=True)
+            except Exception:
+                pass
+
+            self.set_setting('category_hierarchy_v3_done', '1')
+        except Exception as e:
+            logger.warning(f"Could not bootstrap v2 hierarchy: {e}")
 
     def _bootstrap_default_hierarchy_if_needed(self):
         """One-time bootstrap: group legacy flat categories under 'grailed' and migrate products."""
@@ -611,8 +743,12 @@ class Database:
 
             # Root categories
             roots = [
-                ('grailed', {'ru': '📂 Grailed', 'uk': '📂 Grailed', 'en': '📂 Grailed'}, 0),
-                ('support', DEFAULT_CATEGORIES.get('support') or {'ru': '🆘 Support', 'uk': '🆘 Support', 'en': '🆘 Support'}, 999),
+                ('call_services', DEFAULT_ROOT_CATEGORIES['call_services'], 0),
+                ('ebay_services', DEFAULT_ROOT_CATEGORIES['ebay_services'], 10),
+                ('grailed_services', DEFAULT_ROOT_CATEGORIES['grailed_services'], 20),
+                ('additional_services', DEFAULT_ROOT_CATEGORIES['additional_services'], 30),
+                ('paypal_services', DEFAULT_ROOT_CATEGORIES['paypal_services'], 40),
+                ('support', DEFAULT_ROOT_CATEGORIES['support'], 50),
             ]
             for cat_id, names, sort_order in roots:
                 self.execute(
@@ -623,16 +759,15 @@ class Database:
                     commit=True
                 )
 
-            # Default subcategories for Grailed (legacy defaults except support)
+            # Default subcategories: one per root service
             sub_sort = 0
-            for subcat_id, names in DEFAULT_CATEGORIES.items():
-                if subcat_id == 'support':
-                    continue
+            for parent_cat_id, subcat_id in DEFAULT_SERVICE_SUBCATEGORIES.items():
+                names = DEFAULT_ROOT_CATEGORIES.get(parent_cat_id, {})
                 self.execute(
                     """INSERT INTO subcategories
                        (subcat_id, parent_cat_id, name_ru, name_uk, name_en, photo_url, sort_order, created_at, updated_at)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (subcat_id, 'grailed', names.get('ru'), names.get('uk'), names.get('en'), None, sub_sort, now, now),
+                    (subcat_id, parent_cat_id, names.get('ru'), names.get('uk'), names.get('en'), None, sub_sort, now, now),
                     commit=True
                 )
                 sub_sort += 10
@@ -667,8 +802,24 @@ class Database:
                 now = datetime.now().isoformat()
                 name_i18n = build_i18n_triplet(name, source_lang='ru')
                 desc_i18n = build_i18n_triplet(desc, source_lang='ru')
-                root_cat = 'support' if cat == 'support' else 'grailed'
-                subcat = None if cat == 'support' else cat
+                if cat == 'support':
+                    root_cat = 'support'
+                    subcat = None
+                elif cat == 'call_service':
+                    root_cat = 'call_services'
+                    subcat = 'call_services'
+                elif cat == 'ebay':
+                    root_cat = 'ebay_services'
+                    subcat = 'ebay_services'
+                elif cat == 'paypal':
+                    root_cat = 'paypal_services'
+                    subcat = 'paypal_services'
+                elif cat in {'grailed_accounts', 'grailed_likes'}:
+                    root_cat = 'grailed_services'
+                    subcat = 'grailed_services'
+                else:
+                    root_cat = 'additional_services'
+                    subcat = 'additional_services'
                 self.execute(
                     """INSERT INTO products 
                        (category, subcategory, name, name_ru, name_uk, name_en, price_usd, description, description_ru, description_uk, description_en, stock, sort_order, created_at, updated_at) 
@@ -1062,10 +1213,10 @@ class Database:
                 return categories
             else:
                 logger.warning("No categories found in database, using defaults")
-                return {cat_id: (names.get(lang) or names['ru']) for cat_id, names in DEFAULT_CATEGORIES.items()}
+                return {cat_id: (names.get(lang) or names['ru']) for cat_id, names in DEFAULT_ROOT_CATEGORIES.items()}
         except Exception as e:
             logger.error(f"Error getting categories: {e}")
-            return {cat_id: (names.get(lang) or names['ru']) for cat_id, names in DEFAULT_CATEGORIES.items()}
+            return {cat_id: (names.get(lang) or names['ru']) for cat_id, names in DEFAULT_ROOT_CATEGORIES.items()}
 
     def get_subcategories(self, parent_cat_id: str, lang: str = 'ru') -> Dict[str, str]:
         """Получить подкатегории для выбранной категории."""
