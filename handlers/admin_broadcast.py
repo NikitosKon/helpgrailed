@@ -11,6 +11,28 @@ logger = logging.getLogger(__name__)
 active_broadcasts = {}
 
 
+async def _edit_or_send(query, text: str, reply_markup=None, parse_mode=None):
+    try:
+        return await query.edit_message_text(
+            text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode
+        )
+    except Exception as e:
+        if 'There is no text in the message to edit' not in str(e):
+            raise
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        return await query.get_bot().send_message(
+            chat_id=query.message.chat_id,
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode
+        )
+
+
 def _broadcast_keyboard(has_photo: bool = False, draft_id: int | None = None):
     keyboard = [
         [
@@ -75,7 +97,7 @@ async def admin_broadcast_menu(update: Update, context: ContextTypes.DEFAULT_TYP
         [InlineKeyboardButton("◀️ Назад", callback_data='admin')]
     ]
 
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "📢 <b>Рассылки</b>\n\n"
         "Создавайте, сохраняйте в черновики и отправляйте позже.",
         reply_markup=InlineKeyboardMarkup(keyboard),
@@ -92,7 +114,7 @@ async def broadcast_create_start(update: Update, context: ContextTypes.DEFAULT_T
     context.user_data['broadcast_photo_file_id'] = None
     db.set_pending_action(user.id, 'broadcast_text')
 
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "📢 <b>Создание рассылки</b>\n\n"
         "Введите текст рассылки.\n"
         "Можно использовать HTML-теги.\n"
@@ -115,7 +137,7 @@ async def broadcast_edit_start(update: Update, context: ContextTypes.DEFAULT_TYP
     current_text = context.user_data.get('broadcast_text') or ''
     db.set_pending_action(user.id, 'broadcast_text')
 
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "✏️ <b>Редактирование рассылки</b>\n\n"
         f"Текущий текст:\n<code>{current_text[:500]}</code>\n\n"
         "Отправьте новый текст.",
@@ -128,7 +150,7 @@ async def broadcast_add_photo_start(update: Update, context: ContextTypes.DEFAUL
     query = update.callback_query
     user = query.from_user
     db.set_pending_action(user.id, 'broadcast_photo')
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "🖼 Отправьте фото для рассылки.",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data='admin_broadcast_menu')]])
     )
@@ -149,7 +171,7 @@ async def handle_broadcast_photo_input(update: Update, context: ContextTypes.DEF
 async def broadcast_remove_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     context.user_data['broadcast_photo_file_id'] = None
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "✅ Фото удалено из текущей рассылки.",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("👀 Вернуться к предпросмотру", callback_data='broadcast_preview_again')],
@@ -171,7 +193,7 @@ async def broadcast_save_draft_start(update: Update, context: ContextTypes.DEFAU
     query = update.callback_query
     user = query.from_user
     db.set_pending_action(user.id, 'broadcast_draft_title')
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "💾 Введите название черновика.",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data='admin_broadcast_menu')]])
     )
@@ -212,7 +234,7 @@ async def broadcast_drafts_menu(update: Update, context: ContextTypes.DEFAULT_TY
 
     keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_broadcast_menu')])
 
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "📚 <b>Черновики рассылок</b>\n\nВыберите черновик для открытия или удаления.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='HTML'
@@ -251,10 +273,10 @@ async def broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = context.user_data.get('broadcast_text')
     photo_file_id = context.user_data.get('broadcast_photo_file_id')
     if not text and not photo_file_id:
-        await query.edit_message_text("❌ Ошибка: рассылка пустая")
+        await _edit_or_send(query, "❌ Ошибка: рассылка пустая")
         return
 
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "📢 <b>Рассылка началась!</b>\n\n"
         "⏳ Идет отправка...",
         parse_mode='HTML'
@@ -300,7 +322,7 @@ async def broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if i % 100 == 0 and i > 0:
             try:
-                await query.edit_message_text(
+                await _edit_or_send(query, 
                     f"📢 <b>Рассылка...</b>\n\n"
                     f"📊 Прогресс: {i}/{total}\n"
                     f"✅ Успешно: {success}\n"
@@ -336,12 +358,12 @@ async def broadcast_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for bid, data in active_broadcasts.items():
         if bid.startswith(str(user.id)):
             data['cancelled'] = True
-            await query.edit_message_text("✅ Рассылка отменена")
+            await _edit_or_send(query, "✅ Рассылка отменена")
             return
 
     context.user_data.clear()
     db.clear_pending_action(user.id)
-    await query.edit_message_text("✅ Создание рассылки отменено")
+    await _edit_or_send(query, "✅ Создание рассылки отменено")
 
 
 async def broadcast_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -367,4 +389,4 @@ async def broadcast_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin_broadcast_menu')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
