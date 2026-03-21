@@ -8,12 +8,36 @@ import os
 
 logger = logging.getLogger(__name__)
 
+async def _edit_or_send(query, text, reply_markup=None, parse_mode=None, **kwargs):
+    try:
+        return await query.edit_message_text(
+            text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+            **kwargs
+        )
+    except Exception as e:
+        if 'There is no text in the message to edit' not in str(e):
+            raise
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        return await query.get_bot().send_message(
+            chat_id=query.message.chat_id,
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+            **kwargs
+        )
+
+
 async def handle_services(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать категории услуг"""
     query = update.callback_query
     user = query.from_user
     
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         get_text('choose_category', user.id),
         reply_markup=categories_menu(user.id)
     )
@@ -33,7 +57,7 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
             [InlineKeyboardButton(SUPPORT_CONTACT, url=f"https://t.me/{SUPPORT_CONTACT.replace('@', '')}")],
             [InlineKeyboardButton(get_text('back', user.id), callback_data='services')]
         ]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard))
         return
     
     try:
@@ -42,7 +66,7 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
         if not items:
             categories = db.get_categories(user_lang)
             cat_name = categories.get(category, category)
-            await query.edit_message_text(
+            await _edit_or_send(query, 
                 f"{get_text('no_items', user.id)}\n\n{cat_name}",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(get_text('back', user.id), callback_data='services')]])
             )
@@ -81,11 +105,11 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
                     reply_markup=InlineKeyboardMarkup(keyboard)
                 )
         else:
-            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+            await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard))
         
     except Exception as e:
         logger.error(f"Ошибка в категории {category}: {e}")
-        await query.edit_message_text(
+        await _edit_or_send(query, 
             "❌ Ошибка загрузки товаров",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(get_text('back', user.id), callback_data='services')]])
         )
@@ -99,7 +123,7 @@ async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
     user_lang = user_data.get('language', 'ru')
     prod = db.get_product(product_id, lang=user_lang)
     if not prod:
-        await query.edit_message_text("❌ Товар не найден.")
+        await _edit_or_send(query, "❌ Товар не найден.")
         return
     
     if isinstance(prod, dict):
@@ -143,7 +167,7 @@ async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
                 parse_mode='HTML'
             )
     else:
-        await query.edit_message_text(
+        await _edit_or_send(query, 
             text,
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='HTML'
@@ -193,7 +217,7 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
             text = f"❌ Ошибка: {message}"
             keyboard = [InlineKeyboardButton("◀️ Назад", callback_data='services')]
         
-        await query.edit_message_text(
+        await _edit_or_send(query, 
             text, 
             reply_markup=InlineKeyboardMarkup([keyboard] if not isinstance(keyboard[0], list) else keyboard), 
             parse_mode='HTML'
@@ -223,7 +247,7 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
         )
         keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data='menu')]]
         
-        await query.edit_message_text(
+        await _edit_or_send(query, 
             text, 
             reply_markup=InlineKeyboardMarkup(keyboard), 
             parse_mode='HTML'

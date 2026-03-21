@@ -14,6 +14,30 @@ from database import db
 
 logger = logging.getLogger(__name__)
 
+async def _edit_or_send(query, text, reply_markup=None, parse_mode=None, **kwargs):
+    try:
+        return await query.edit_message_text(
+            text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+            **kwargs
+        )
+    except Exception as e:
+        if 'There is no text in the message to edit' not in str(e):
+            raise
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        return await query.get_bot().send_message(
+            chat_id=query.message.chat_id,
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+            **kwargs
+        )
+
+
 
 async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data: str):
     """Главный обработчик админ-панели"""
@@ -37,7 +61,7 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
             [InlineKeyboardButton("👑 Управление админами", callback_data='admin_admins')],
             [InlineKeyboardButton("◀️ Назад", callback_data='menu')]
         ]
-        await query.edit_message_text(
+        await _edit_or_send(query, 
             "👑 <b>Админ-панель</b>",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='HTML'
@@ -327,7 +351,7 @@ async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 
 async def admin_products_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -346,7 +370,7 @@ async def admin_products_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton("◀️ Назад", callback_data='admin')]
     ]
 
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "📦 <b>Управление товарами и категориями</b>",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='HTML'
@@ -358,7 +382,7 @@ async def admin_list_products(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     products = db.get_products(show_all=True)
     if not products:
-        await query.edit_message_text("📭 Товаров нет")
+        await _edit_or_send(query, "📭 Товаров нет")
         return
 
     text = "📋 <b>Список товаров:</b>\n\n"
@@ -386,7 +410,7 @@ async def admin_list_products(update: Update, context: ContextTypes.DEFAULT_TYPE
         text = text[:3970] + "..."
 
     keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin_products')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 
 async def admin_add_product_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -399,7 +423,7 @@ async def admin_add_product_start(update: Update, context: ContextTypes.DEFAULT_
 
     db.set_pending_action(user.id, 'admin_add_product_name')
 
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "➕ <b>Добавление товара</b>\n\nВведите название товара:",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data='admin_products')]]),
         parse_mode='HTML'
@@ -578,7 +602,7 @@ async def admin_edit_product_list(update: Update, context: ContextTypes.DEFAULT_
 
     products = db.get_products(show_all=True)
     if not products:
-        await query.edit_message_text("📭 Нет товаров для редактирования")
+        await _edit_or_send(query, "📭 Нет товаров для редактирования")
         return
 
     keyboard = []
@@ -594,7 +618,7 @@ async def admin_edit_product_list(update: Update, context: ContextTypes.DEFAULT_
     
     keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_products')])
 
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "Выберите товар для редактирования:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -605,7 +629,7 @@ async def admin_edit_product_start(update: Update, context: ContextTypes.DEFAULT
 
     prod = db.get_product(product_id)
     if not prod:
-        await query.edit_message_text("❌ Товар не найден")
+        await _edit_or_send(query, "❌ Товар не найден")
         return
 
     db.set_pending_action(query.from_user.id, f'admin_edit_{product_id}_name')
@@ -633,7 +657,7 @@ async def admin_edit_product_start(update: Update, context: ContextTypes.DEFAULT
     )
 
     keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data='admin_products')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 
 async def admin_delete_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -641,7 +665,7 @@ async def admin_delete_product_list(update: Update, context: ContextTypes.DEFAUL
 
     products = db.get_products(show_all=True)
     if not products:
-        await query.edit_message_text("📭 Нет товаров для удаления")
+        await _edit_or_send(query, "📭 Нет товаров для удаления")
         return
 
     keyboard = []
@@ -657,7 +681,7 @@ async def admin_delete_product_list(update: Update, context: ContextTypes.DEFAUL
     
     keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_products')])
 
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "Выберите товар для удаления:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -667,7 +691,7 @@ async def admin_delete_product_confirm(update: Update, context: ContextTypes.DEF
     query = update.callback_query
 
     db.delete_product(product_id)
-    await query.edit_message_text(f"✅ Товар ID {product_id} удален")
+    await _edit_or_send(query, f"✅ Товар ID {product_id} удален")
 
     import asyncio
     await asyncio.sleep(1)
@@ -689,7 +713,7 @@ async def admin_debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = text[:4000] + "..."
 
     keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin_products')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 
 async def admin_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -712,7 +736,7 @@ async def admin_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 
 async def admin_sales(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -755,7 +779,7 @@ async def admin_sales(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f" • {cat_name}: {count} шт. (${amount:.2f})\n"
     
     keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 
 async def admin_manage_admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -788,7 +812,7 @@ async def admin_manage_admins(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton("◀️ Назад", callback_data='admin')]
     ]
 
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 
 async def admin_add_admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -797,7 +821,7 @@ async def admin_add_admin_start(update: Update, context: ContextTypes.DEFAULT_TY
 
     db.set_pending_action(user.id, 'admin_add_admin')
 
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "➕ <b>Добавление администратора</b>\n\n"
         "Отправьте Telegram ID нового администратора:\n"
         "Пример: <code>123456789</code>\n\n"
@@ -830,7 +854,7 @@ async def admin_remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_admins')])
 
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "Выберите администратора для удаления:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -858,7 +882,7 @@ async def admin_remove_confirm(update: Update, context: ContextTypes.DEFAULT_TYP
     with open('admins.json', 'w') as f:
         json.dump(current_admins, f)
 
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         f"✅ Администратор с ID {admin_id} удален!",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_admins')]])
     )
@@ -878,7 +902,7 @@ async def admin_categories_menu(update: Update, context: ContextTypes.DEFAULT_TY
         [InlineKeyboardButton("◀️ Назад", callback_data='admin')]
     ]
     
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "📂 <b>Управление категориями</b>",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='HTML'
@@ -906,7 +930,7 @@ async def admin_list_categories(update: Update, context: ContextTypes.DEFAULT_TY
         text += f"  🇬🇧 {categories_en.get(cat_id, '—')}\n\n"
     
     keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')]]
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         text,
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='HTML'
@@ -922,7 +946,7 @@ async def admin_add_category_start(update: Update, context: ContextTypes.DEFAULT
     context.user_data['add_category_step'] = 'id'
     db.set_pending_action(user.id, 'admin_add_category_id')
     
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "➕ <b>Добавление категории</b>\n\n"
         "Введите <b>ID категории</b> (английскими буквами, без пробелов):\n"
         "Пример: <code>new_category</code>",
@@ -1040,7 +1064,7 @@ async def admin_edit_category_list(update: Update, context: ContextTypes.DEFAULT
     
     keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')])
     
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "Выберите категорию для редактирования:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -1057,7 +1081,7 @@ async def admin_edit_category_start(update: Update, context: ContextTypes.DEFAUL
     categories_en = db.get_categories('en')
     
     if cat_id not in categories_ru:
-        await query.edit_message_text("❌ Категория не найдена")
+        await _edit_or_send(query, "❌ Категория не найдена")
         return
     
     context.user_data['edit_cat_id'] = cat_id
@@ -1068,7 +1092,7 @@ async def admin_edit_category_start(update: Update, context: ContextTypes.DEFAUL
     
     db.set_pending_action(user.id, f'admin_edit_category_ru_{cat_id}')
     
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         f"✏️ <b>Редактирование категории {cat_id}</b>\n\n"
         f"Текущее русское название: {categories_ru.get(cat_id, '')}\n\n"
         f"Введите новое название на русском (или /skip для пропуска):",
@@ -1156,7 +1180,7 @@ async def admin_delete_category_list(update: Update, context: ContextTypes.DEFAU
     
     keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')])
     
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "Выберите категорию для удаления:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -1168,18 +1192,18 @@ async def admin_delete_category_confirm(update: Update, context: ContextTypes.DE
     
     categories = db.get_categories('ru')
     if cat_id not in categories:
-        await query.edit_message_text("❌ Категория не найдена")
+        await _edit_or_send(query, "❌ Категория не найдена")
         return
     
     success, message = db.delete_category(cat_id)
     if success:
-        await query.edit_message_text(
+        await _edit_or_send(query, 
             f"✅ Категория <b>{cat_id}</b> успешно удалена!",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')]]),
             parse_mode='HTML'
         )
     else:
-        await query.edit_message_text(
+        await _edit_or_send(query, 
             f"❌ {message}",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')]]),
             parse_mode='HTML'
@@ -1521,7 +1545,7 @@ async def admin_home_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("👀 Предпросмотр", callback_data='admin_home_preview')],
         [InlineKeyboardButton("◀️ Назад", callback_data='admin')],
     ]
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         f"🏠 <b>Главная страница</b>\n\n"
         f"Фото: {photo_state}\n"
         f"RU preview: <code>{preview}</code>",
@@ -1540,7 +1564,7 @@ async def admin_home_edit_text_start(update: Update, context: ContextTypes.DEFAU
     context.user_data['home_text_en'] = home.get('text_en')
     db.set_pending_action(user.id, 'admin_home_text_ru')
 
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "📝 <b>Редактирование текстов главной страницы</b>\n\n"
         "Введите текст на русском.\n"
         "Можно использовать <code>{name}</code> для имени пользователя.\n"
@@ -1593,7 +1617,7 @@ async def admin_home_edit_photo_start(update: Update, context: ContextTypes.DEFA
     query = update.callback_query
     user = query.from_user
     db.set_pending_action(user.id, 'admin_home_photo')
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "🖼 Отправьте фото для главной страницы.\n\n"
         "Оно будет показываться над приветственным текстом после выбора языка.",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data='admin_home_menu')]])
@@ -1622,7 +1646,7 @@ async def handle_admin_home_photo_input(update: Update, context: ContextTypes.DE
 async def admin_home_remove_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     ok = db.save_home_content({'photo_file_id': None})
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "✅ Фото главной страницы удалено." if ok else "❌ Не удалось удалить фото.",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_home_menu')]])
     )
@@ -1644,7 +1668,7 @@ async def admin_menu_editor(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("➕ Кастомные кнопки", callback_data='admin_menu_custom')],
         [InlineKeyboardButton("◀️ Назад", callback_data='admin')],
     ]
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "🔘 <b>Редактор главного меню</b>\n\n"
         "Здесь можно менять подписи стандартных кнопок и управлять дополнительными кнопками.",
         reply_markup=InlineKeyboardMarkup(keyboard),
@@ -1663,7 +1687,7 @@ async def admin_menu_core_menu(update: Update, context: ContextTypes.DEFAULT_TYP
         [InlineKeyboardButton("🆘 Support", callback_data='admin_menu_core_edit_support')],
         [InlineKeyboardButton("◀️ Назад", callback_data='admin_menu_editor')],
     ]
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "✏️ <b>Core кнопки</b>\n\n"
         "Для Balance можно использовать шаблон <code>{balance}</code>.",
         reply_markup=InlineKeyboardMarkup(keyboard),
@@ -1676,7 +1700,7 @@ async def admin_menu_core_edit_start(update: Update, context: ContextTypes.DEFAU
     core = db.get_main_menu_core()
     labels = core.get(key, {})
 
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "✏️ <b>Редактирование core-кнопки</b>\n\n"
         f"Ключ: <code>{html.escape(key)}</code>\n"
         f"RU: {html.escape(labels.get('ru') or '-')}\n"
@@ -1699,7 +1723,7 @@ async def admin_menu_core_edit_field_start(update: Update, context: ContextTypes
     context.user_data['menu_core_key'] = key
     db.set_pending_action(query.from_user.id, f'admin_menu_core_label_{lang_code}')
 
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         f"✏️ <b>Кнопка {html.escape(key)}</b>\n\n"
         f"Текущее значение {lang_code.upper()}: {html.escape(labels.get(lang_code) or '-')}\n\n"
         "Введите новый текст или /skip, чтобы оставить текущее значение.",
@@ -1764,7 +1788,7 @@ async def admin_menu_custom_menu(update: Update, context: ContextTypes.DEFAULT_T
         ])
 
     keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_menu_editor')])
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         _build_custom_buttons_text(),
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='HTML'
@@ -1780,7 +1804,7 @@ async def admin_menu_custom_add_start(update: Update, context: ContextTypes.DEFA
         [InlineKeyboardButton("⚙️ Кнопка действия", callback_data='admin_menu_custom_type_callback')],
         [InlineKeyboardButton("◀️ Назад", callback_data='admin_menu_custom')],
     ]
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "Выберите тип новой кнопки:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -1797,7 +1821,7 @@ async def admin_menu_custom_edit_start(update: Update, context: ContextTypes.DEF
     context.user_data['custom_menu_mode'] = 'edit'
     context.user_data['custom_menu_button'] = dict(button)
     context.user_data['custom_menu_edit_id'] = button_id
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "✏️ <b>Редактирование кастомной кнопки</b>\n\n"
         f"ID: <code>{html.escape(button_id)}</code>\n"
         f"Тип: <code>{html.escape(button.get('type', 'callback'))}</code>\n"
@@ -1824,7 +1848,7 @@ async def admin_menu_custom_choose_type(update: Update, context: ContextTypes.DE
     button['type'] = button_type
     context.user_data['custom_menu_button'] = button
     db.set_pending_action(query.from_user.id, 'admin_menu_custom_label_ru')
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "Введите текст кнопки для RU:",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data='admin_menu_custom')]])
     )
@@ -1844,7 +1868,7 @@ async def admin_menu_custom_edit_field_start(update: Update, context: ContextTyp
 
     if field == 'target':
         if button.get('type') != 'url':
-            await query.edit_message_text(
+            await _edit_or_send(query, 
                 "Выберите новое действие для кнопки:",
                 reply_markup=InlineKeyboardMarkup(
                     [[InlineKeyboardButton(label, callback_data=f'admin_menu_custom_target_{target}')]
@@ -1863,7 +1887,7 @@ async def admin_menu_custom_edit_field_start(update: Update, context: ContextTyp
         hint = "Введите новый текст"
 
     db.set_pending_action(query.from_user.id, action)
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "✏️ <b>Редактирование кастомной кнопки</b>\n\n"
         f"Текущее значение: {html.escape(current_value)}\n\n"
         f"{hint} или /skip, чтобы оставить текущее.",
@@ -1986,7 +2010,7 @@ async def admin_menu_custom_choose_target(update: Update, context: ContextTypes.
     ok = _save_custom_menu_button(button, context.user_data.get('custom_menu_edit_id'))
     db.clear_pending_action(query.from_user.id)
 
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "✅ Кастомная кнопка сохранена." if ok else "❌ Не удалось сохранить кастомную кнопку.",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
             "◀️ Назад",
@@ -1999,7 +2023,7 @@ async def admin_menu_custom_delete(update: Update, context: ContextTypes.DEFAULT
     query = update.callback_query
     buttons = [b for b in db.get_custom_menu_buttons() if b.get('id') != button_id]
     ok = db.save_custom_menu_buttons(buttons)
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         "✅ Кнопка удалена." if ok else "❌ Не удалось удалить кнопку.",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_menu_custom')]])
     )

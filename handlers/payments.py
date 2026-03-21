@@ -11,6 +11,30 @@ import json  # Добавлен импорт
 
 logger = logging.getLogger(__name__)
 
+async def _edit_or_send(query, text, reply_markup=None, parse_mode=None, **kwargs):
+    try:
+        return await query.edit_message_text(
+            text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+            **kwargs
+        )
+    except Exception as e:
+        if 'There is no text in the message to edit' not in str(e):
+            raise
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        return await query.get_bot().send_message(
+            chat_id=query.message.chat_id,
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+            **kwargs
+        )
+
+
 
 def _strip_leading_icon(text: str) -> str:
     return re.sub(r'^[^\w]+', '', text or '').strip()
@@ -37,7 +61,7 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(get_text('back', user.id), callback_data='menu')]
     ]
     
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         text,
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='HTML'
@@ -48,7 +72,7 @@ async def handle_deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
     text = f"💰 {get_text('choose_deposit_currency', user.id)}"
-    await query.edit_message_text(text, reply_markup=currency_menu(user.id))
+    await _edit_or_send(query, text, reply_markup=currency_menu(user.id))
 
 async def handle_currency_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, currency):
     """Обработка выбора валюты"""
@@ -59,7 +83,7 @@ async def handle_currency_selection(update: Update, context: ContextTypes.DEFAUL
     
     currency_name = CRYPTO_CURRENCIES.get(currency, currency)
     text = f"💰 {get_text('selected_currency', user.id)}: {currency_name}\n\n{get_text('choose_deposit_amount', user.id)}"
-    await query.edit_message_text(text, reply_markup=amount_menu(currency, user.id))
+    await _edit_or_send(query, text, reply_markup=amount_menu(currency, user.id))
 
 async def handle_amount_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, currency, amount):
     """Обработка выбора суммы"""
@@ -78,7 +102,7 @@ async def handle_custom_amount(update: Update, context: ContextTypes.DEFAULT_TYP
     
     currency_name = CRYPTO_CURRENCIES.get(currency, currency)
     text = f"💰 {get_text('selected_currency', user.id)}: {currency_name}\n\n{get_text('enter_deposit_amount', user.id)}"
-    await query.edit_message_text(text, reply_markup=cancel_button(user.id))
+    await _edit_or_send(query, text, reply_markup=cancel_button(user.id))
 
 async def handle_custom_deposit(update: Update, context: ContextTypes.DEFAULT_TYPE, text):
     """Обработка кастомной суммы"""
@@ -234,7 +258,7 @@ async def create_deposit_invoice(query, user, currency, amount, context):
         
         keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data='menu')]]
         
-        await query.edit_message_text(
+        await _edit_or_send(query, 
             text,
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='HTML',
@@ -242,7 +266,7 @@ async def create_deposit_invoice(query, user, currency, amount, context):
         )
     except Exception as e:
         logger.error(f"Ошибка: {e}")
-        await query.edit_message_text(
+        await _edit_or_send(query, 
             f"❌ Ошибка при создании счёта. Попробуйте позже."
         )
 
@@ -258,7 +282,7 @@ async def handle_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Для вывода напишите администратору: {ADMIN_CONTACT}\n\n"
         f"<i>Вывод возможен от 10 USDT. Комиссия - 5%</i>"
     )
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         text,
         reply_markup=back_button('balance'),
         parse_mode='HTML'
@@ -273,7 +297,7 @@ async def handle_transfer_start(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data.pop('transfer_recipient', None)
     db.set_pending_action(user.id, 'transfer_recipient')
 
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         f"💸 <b>{_strip_leading_icon(get_text('transfer_balance', user.id))}</b>\n\n"
         f"{get_text('enter_transfer_recipient', user.id)}",
         reply_markup=cancel_button(user.id),

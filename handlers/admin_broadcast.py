@@ -5,6 +5,7 @@ from database import db
 from config import ADMIN_IDS
 import logging
 import asyncio
+import html
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,25 @@ async def _edit_or_send(query, text: str, reply_markup=None, parse_mode=None):
         )
 
 
+def _render_broadcast_text(template: str | None, user_row) -> str | None:
+    if not template:
+        return template
+
+    row = dict(user_row)
+    user_id = row.get('user_id')
+    first_name = row.get('first_name') or 'User'
+    username = row.get('username') or ''
+    mention = f'<a href="tg://user?id={user_id}">{html.escape(first_name)}</a>'
+
+    return (
+        template
+        .replace('{mention}', mention)
+        .replace('{first_name}', html.escape(first_name))
+        .replace('{username}', html.escape(username))
+        .replace('{user_id}', str(user_id))
+    )
+
+
 def _broadcast_keyboard(has_photo: bool = False, draft_id: int | None = None):
     keyboard = [
         [
@@ -57,25 +77,36 @@ async def _show_broadcast_preview(target_message, context: ContextTypes.DEFAULT_
     photo_file_id = context.user_data.get('broadcast_photo_file_id')
 
     if not text and not photo_file_id:
-        await target_message.reply_text("❌ Черновик пустой.")
+        await context.bot.send_message(target_message.chat_id, "❌ Черновик пустой.")
         return
 
-    caption = None
     if text:
-        caption = f"📢 <b>Предпросмотр рассылки</b>\n\n{text}\n\n<i>Так это увидят пользователи</i>"
+        preview_text = (
+            text
+            .replace('{mention}', '<a href="tg://user?id=123456789">User</a>')
+            .replace('{first_name}', 'User')
+            .replace('{username}', 'username')
+            .replace('{user_id}', '123456789')
+        )
+        caption = (
+            f"📢 <b>Предпросмотр рассылки</b>\n\n{preview_text}\n\n"
+            f"<i>Так это увидят пользователи</i>"
+        )
     else:
         caption = "📢 <b>Предпросмотр рассылки</b>\n\n<i>Так это увидят пользователи</i>"
 
     if photo_file_id:
-        await target_message.reply_photo(
+        await context.bot.send_photo(
+            chat_id=target_message.chat_id,
             photo=photo_file_id,
             caption=caption,
             reply_markup=_broadcast_keyboard(has_photo=True),
             parse_mode='HTML'
         )
     else:
-        await target_message.reply_text(
-            caption,
+        await context.bot.send_message(
+            chat_id=target_message.chat_id,
+            text=caption,
             reply_markup=_broadcast_keyboard(has_photo=False),
             parse_mode='HTML'
         )
@@ -118,7 +149,9 @@ async def broadcast_create_start(update: Update, context: ContextTypes.DEFAULT_T
         "📢 <b>Создание рассылки</b>\n\n"
         "Введите текст рассылки.\n"
         "Можно использовать HTML-теги.\n"
-        "После этого сможете добавить фото и сохранить черновик.",
+        "После этого сможете добавить фото и сохранить черновик.\n\n"
+        "Шаблоны: <code>{mention}</code>, <code>{first_name}</code>, "
+        "<code>{username}</code>, <code>{user_id}</code>",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data='admin_broadcast_menu')]]),
         parse_mode='HTML'
     )
@@ -282,7 +315,7 @@ async def broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='HTML'
     )
 
-    users = db.execute("SELECT user_id FROM users", fetch=True) or []
+    users = db.execute("SELECT user_id, username, first_name FROM users", fetch=True) or []
     total = len(users)
     success = 0
     failed = 0
@@ -295,19 +328,21 @@ async def broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if broadcast_id in active_broadcasts and active_broadcasts[broadcast_id].get('cancelled'):
             break
 
-        user_id = user_row['user_id'] if db.use_postgres else user_row[0]
+        row = dict(user_row)
+        user_id = row['user_id']
+        rendered_text = _render_broadcast_text(text, row)
         try:
             if photo_file_id:
                 await context.bot.send_photo(
                     user_id,
                     photo=photo_file_id,
-                    caption=text or None,
+                    caption=rendered_text or None,
                     parse_mode='HTML'
                 )
             else:
                 await context.bot.send_message(
                     user_id,
-                    text,
+                    rendered_text,
                     parse_mode='HTML'
                 )
             success += 1

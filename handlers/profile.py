@@ -6,6 +6,30 @@ from datetime import datetime
 import re
 
 
+
+
+async def _edit_or_send(query, text, reply_markup=None, parse_mode=None, **kwargs):
+    try:
+        return await query.edit_message_text(
+            text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+            **kwargs
+        )
+    except Exception as e:
+        if 'There is no text in the message to edit' not in str(e):
+            raise
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        return await query.get_bot().send_message(
+            chat_id=query.message.chat_id,
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+            **kwargs
+        )
 def _strip_leading_icon(text: str) -> str:
     return re.sub(r'^[^\w]+', '', text or '').strip()
 
@@ -71,7 +95,7 @@ async def handle_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(get_text('back', user.id), callback_data='menu')]
     ]
     
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         text,
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='HTML'
@@ -85,7 +109,7 @@ async def handle_purchase_history(update: Update, context: ContextTypes.DEFAULT_
     history = db.get_purchase_history(user.id)
     
     if not history:
-        await query.edit_message_text(
+        await _edit_or_send(query, 
             f"📜 <b>{get_text('purchase_history', user.id)}</b>\n\n"
             f"{get_text('no_purchases', user.id)}",
             reply_markup=back_button('profile', user.id),
@@ -98,7 +122,7 @@ async def handle_purchase_history(update: Update, context: ContextTypes.DEFAULT_
         date = datetime.fromisoformat(item['purchase_date']).strftime('%d.%m.%Y')
         text += f"• {date} - {item['product_name']} - ${item['amount']}\n"
     
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         text,
         reply_markup=back_button('profile', user.id),
         parse_mode='HTML'
@@ -147,7 +171,7 @@ async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💰 {get_text('earned', user.id)}: ${earned:.2f}"
     )
     
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         text,
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton(f"📋 {get_text('referral_details', user.id)}", callback_data='referral_details')],
@@ -196,7 +220,7 @@ async def handle_referral_details(update: Update, context: ContextTypes.DEFAULT_
             lines.append("")
         text = "\n".join(lines).strip()
 
-    await query.edit_message_text(
+    await _edit_or_send(query, 
         text,
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton(get_text('back', user.id), callback_data='referral')]
