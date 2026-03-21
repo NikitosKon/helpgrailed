@@ -407,6 +407,10 @@ class Database:
         try:
             if self.use_postgres:
                 self.execute(
+                    "ALTER TABLE categories ADD COLUMN IF NOT EXISTS name TEXT",
+                    commit=True
+                )
+                self.execute(
                     "ALTER TABLE categories ADD COLUMN IF NOT EXISTS name_ru TEXT",
                     commit=True
                 )
@@ -425,10 +429,18 @@ class Database:
                 try:
                     self.execute(
                         """UPDATE categories
-                           SET name_ru = COALESCE(name_ru, name),
+                           SET name = COALESCE(name, name_ru, name_en, name_uk),
+                               name_ru = COALESCE(name_ru, name),
                                name_uk = COALESCE(name_uk, name),
                                name_en = COALESCE(name_en, name)
                            WHERE name IS NOT NULL""",
+                        commit=True
+                    )
+                except Exception:
+                    pass
+                try:
+                    self.execute(
+                        "ALTER TABLE categories ALTER COLUMN name DROP NOT NULL",
                         commit=True
                     )
                 except Exception:
@@ -1587,9 +1599,9 @@ class Database:
         now = datetime.now().isoformat()
         try:
             if self.use_postgres:
-                query = """INSERT INTO categories (cat_id, name_ru, name_uk, name_en, photo_url, sort_order, created_at, updated_at) 
-                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"""
-                params = (cat_id, name_ru, name_uk, name_en, photo_url, sort_order, now, now)
+                query = """INSERT INTO categories (cat_id, name, name_ru, name_uk, name_en, photo_url, sort_order, created_at, updated_at) 
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+                params = (cat_id, name_ru, name_ru, name_uk, name_en, photo_url, sort_order, now, now)
             else:
                 query = """INSERT INTO categories (cat_id, name_ru, name_uk, name_en, photo_url, sort_order, created_at, updated_at) 
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)"""
@@ -1611,6 +1623,9 @@ class Database:
         if name_ru:
             updates.append("name_ru = ?")
             params.append(name_ru)
+            if self.use_postgres:
+                updates.append("name = ?")
+                params.append(name_ru)
         if name_uk:
             updates.append("name_uk = ?")
             params.append(name_uk)
