@@ -29,6 +29,8 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
         keyboard = [
             [InlineKeyboardButton("📊 Статистика", callback_data='admin_stats')],
             [InlineKeyboardButton("📦 Управление товарами", callback_data='admin_products')],
+            [InlineKeyboardButton("🏠 Главная страница", callback_data='admin_home_menu')],
+            [InlineKeyboardButton("🔘 Главное меню", callback_data='admin_menu_editor')],
             [InlineKeyboardButton("👥 Пользователи", callback_data='admin_users')],
             [InlineKeyboardButton("📈 Продажи", callback_data='admin_sales')],
             [InlineKeyboardButton("👑 Управление админами", callback_data='admin_admins')],
@@ -45,6 +47,38 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
 
     elif data == 'admin_products':
         await admin_products_menu(update, context)
+
+    elif data == 'admin_home_menu':
+        await admin_home_menu(update, context)
+    elif data == 'admin_home_edit_text':
+        await admin_home_edit_text_start(update, context)
+    elif data == 'admin_home_edit_photo':
+        await admin_home_edit_photo_start(update, context)
+    elif data == 'admin_home_remove_photo':
+        await admin_home_remove_photo(update, context)
+    elif data == 'admin_home_preview':
+        await admin_home_preview(update, context)
+
+    elif data == 'admin_menu_editor':
+        await admin_menu_editor(update, context)
+    elif data == 'admin_menu_core':
+        await admin_menu_core_menu(update, context)
+    elif data.startswith('admin_menu_core_edit_'):
+        await admin_menu_core_edit_start(update, context, data.replace('admin_menu_core_edit_', ''))
+    elif data == 'admin_menu_custom':
+        await admin_menu_custom_menu(update, context)
+    elif data == 'admin_menu_custom_add':
+        await admin_menu_custom_add_start(update, context)
+    elif data == 'admin_menu_custom_type_url':
+        await admin_menu_custom_choose_type(update, context, 'url')
+    elif data == 'admin_menu_custom_type_callback':
+        await admin_menu_custom_choose_type(update, context, 'callback')
+    elif data.startswith('admin_menu_custom_target_'):
+        await admin_menu_custom_choose_target(update, context, data.replace('admin_menu_custom_target_', ''))
+    elif data.startswith('admin_menu_custom_edit_'):
+        await admin_menu_custom_edit_start(update, context, data.replace('admin_menu_custom_edit_', ''))
+    elif data.startswith('admin_menu_custom_delete_'):
+        await admin_menu_custom_delete(update, context, data.replace('admin_menu_custom_delete_', ''))
 
     # Управление категориями
     elif data == 'admin_categories_menu':
@@ -1424,3 +1458,430 @@ async def handle_admin_edit_product_input(update: Update, context: ContextTypes.
         db.clear_pending_action(user.id)
         context.user_data.clear()
         return
+
+
+def _menu_target_options():
+    return {
+        'services': '🛒 Services',
+        'balance': '💰 Balance',
+        'profile': '👤 Profile',
+        'referral': '🔗 Referral',
+        'promo_code': '🎫 Promo code',
+        'menu': '🏠 Main menu',
+    }
+
+
+async def admin_home_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    home = db.get_home_content()
+    preview = (home.get('text_ru') or config.get_text('welcome', 'ru', name='{name}'))[:120]
+    photo_state = "есть" if home.get('photo_file_id') else "нет"
+
+    keyboard = [
+        [InlineKeyboardButton("📝 Редактировать тексты", callback_data='admin_home_edit_text')],
+        [InlineKeyboardButton("🖼 Обновить фото", callback_data='admin_home_edit_photo')],
+        [InlineKeyboardButton("🗑 Удалить фото", callback_data='admin_home_remove_photo')],
+        [InlineKeyboardButton("👀 Предпросмотр", callback_data='admin_home_preview')],
+        [InlineKeyboardButton("◀️ Назад", callback_data='admin')],
+    ]
+    await query.edit_message_text(
+        f"🏠 <b>Главная страница</b>\n\n"
+        f"Фото: {photo_state}\n"
+        f"RU preview: <code>{preview}</code>",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )
+
+
+async def admin_home_edit_text_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = query.from_user
+    home = db.get_home_content()
+
+    context.user_data['home_text_ru'] = home.get('text_ru')
+    context.user_data['home_text_uk'] = home.get('text_uk')
+    context.user_data['home_text_en'] = home.get('text_en')
+    db.set_pending_action(user.id, 'admin_home_text_ru')
+
+    await query.edit_message_text(
+        "📝 <b>Редактирование текстов главной страницы</b>\n\n"
+        "Введите текст на русском.\n"
+        "Можно использовать <code>{name}</code> для имени пользователя.\n"
+        "Или отправьте /skip, чтобы оставить текущий.",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data='admin_home_menu')]]),
+        parse_mode='HTML'
+    )
+
+
+async def handle_admin_home_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, text: str):
+    user = update.effective_user
+    text = text.strip()
+
+    if action == 'admin_home_text_ru':
+        if text != '/skip':
+            context.user_data['home_text_ru'] = text
+        db.set_pending_action(user.id, 'admin_home_text_uk')
+        await update.message.reply_text("Введите текст на украинском (или /skip):")
+        return
+
+    if action == 'admin_home_text_uk':
+        if text != '/skip':
+            context.user_data['home_text_uk'] = text
+        db.set_pending_action(user.id, 'admin_home_text_en')
+        await update.message.reply_text("Введите текст на английском (или /skip):")
+        return
+
+    if action == 'admin_home_text_en':
+        if text != '/skip':
+            context.user_data['home_text_en'] = text
+
+        ok = db.save_home_content({
+            'text_ru': context.user_data.get('home_text_ru'),
+            'text_uk': context.user_data.get('home_text_uk'),
+            'text_en': context.user_data.get('home_text_en'),
+        })
+        db.clear_pending_action(user.id)
+        context.user_data.clear()
+
+        if ok:
+            await update.message.reply_text(
+                "✅ Тексты главной страницы обновлены.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_home_menu')]])
+            )
+        else:
+            await update.message.reply_text("❌ Не удалось сохранить тексты главной страницы.")
+
+
+async def admin_home_edit_photo_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = query.from_user
+    db.set_pending_action(user.id, 'admin_home_photo')
+    await query.edit_message_text(
+        "🖼 Отправьте фото для главной страницы.\n\n"
+        "Оно будет показываться над приветственным текстом после выбора языка.",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data='admin_home_menu')]])
+    )
+
+
+async def handle_admin_home_photo_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not update.message.photo:
+        await update.message.reply_text("❌ Отправьте именно фото.")
+        return
+
+    photo_file_id = update.message.photo[-1].file_id
+    ok = db.save_home_content({'photo_file_id': photo_file_id})
+    db.clear_pending_action(user.id)
+
+    if ok:
+        await update.message.reply_text(
+            "✅ Фото главной страницы обновлено.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_home_menu')]])
+        )
+    else:
+        await update.message.reply_text("❌ Не удалось сохранить фото главной страницы.")
+
+
+async def admin_home_remove_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    ok = db.save_home_content({'photo_file_id': None})
+    await query.edit_message_text(
+        "✅ Фото главной страницы удалено." if ok else "❌ Не удалось удалить фото.",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_home_menu')]])
+    )
+
+
+async def admin_home_preview(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer("Отправляю предпросмотр")
+    from handlers.start import send_home_screen
+    user = query.from_user
+    lang = (db.get_user(user.id) or {}).get('language', 'ru')
+    await send_home_screen(context, user, lang, query.message.chat_id)
+
+
+async def admin_menu_editor(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    keyboard = [
+        [InlineKeyboardButton("✏️ Core кнопки", callback_data='admin_menu_core')],
+        [InlineKeyboardButton("➕ Кастомные кнопки", callback_data='admin_menu_custom')],
+        [InlineKeyboardButton("◀️ Назад", callback_data='admin')],
+    ]
+    await query.edit_message_text(
+        "🔘 <b>Редактор главного меню</b>\n\n"
+        "Здесь можно менять подписи стандартных кнопок и управлять дополнительными кнопками.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )
+
+
+async def admin_menu_core_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    keyboard = [
+        [InlineKeyboardButton("🛒 Services", callback_data='admin_menu_core_edit_services')],
+        [InlineKeyboardButton("💰 Balance", callback_data='admin_menu_core_edit_balance')],
+        [InlineKeyboardButton("👤 Profile", callback_data='admin_menu_core_edit_profile')],
+        [InlineKeyboardButton("🔗 Referral", callback_data='admin_menu_core_edit_referral')],
+        [InlineKeyboardButton("◀️ Назад", callback_data='admin_menu_editor')],
+    ]
+    await query.edit_message_text(
+        "✏️ <b>Core кнопки</b>\n\n"
+        "Для Balance можно использовать шаблон <code>{balance}</code>.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )
+
+
+async def admin_menu_core_edit_start(update: Update, context: ContextTypes.DEFAULT_TYPE, key: str):
+    query = update.callback_query
+    user = query.from_user
+    core = db.get_main_menu_core()
+    labels = core.get(key, {})
+
+    context.user_data['menu_core_key'] = key
+    context.user_data['menu_core_ru'] = labels.get('ru')
+    context.user_data['menu_core_uk'] = labels.get('uk')
+    context.user_data['menu_core_en'] = labels.get('en')
+    db.set_pending_action(user.id, 'admin_menu_core_label_ru')
+
+    await query.edit_message_text(
+        f"✏️ <b>Редактирование кнопки {key}</b>\n\n"
+        "Введите текст для RU (или /skip):",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data='admin_menu_core')]]),
+        parse_mode='HTML'
+    )
+
+
+async def handle_admin_menu_core_input(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, text: str):
+    user = update.effective_user
+    key = context.user_data.get('menu_core_key')
+    if not key:
+        db.clear_pending_action(user.id)
+        context.user_data.clear()
+        await update.message.reply_text("❌ Сессия редактирования кнопки сброшена.")
+        return
+
+    if action == 'admin_menu_core_label_ru':
+        if text != '/skip':
+            context.user_data['menu_core_ru'] = text
+        db.set_pending_action(user.id, 'admin_menu_core_label_uk')
+        await update.message.reply_text("Введите текст для UK (или /skip):")
+        return
+
+    if action == 'admin_menu_core_label_uk':
+        if text != '/skip':
+            context.user_data['menu_core_uk'] = text
+        db.set_pending_action(user.id, 'admin_menu_core_label_en')
+        await update.message.reply_text("Введите текст для EN (или /skip):")
+        return
+
+    if action == 'admin_menu_core_label_en':
+        if text != '/skip':
+            context.user_data['menu_core_en'] = text
+
+        ok = db.save_main_menu_core({
+            key: {
+                'ru': context.user_data.get('menu_core_ru'),
+                'uk': context.user_data.get('menu_core_uk'),
+                'en': context.user_data.get('menu_core_en'),
+            }
+        })
+        db.clear_pending_action(user.id)
+        context.user_data.clear()
+
+        if ok:
+            await update.message.reply_text(
+                "✅ Core кнопка обновлена.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_menu_core')]])
+            )
+        else:
+            await update.message.reply_text("❌ Не удалось сохранить кнопку.")
+
+
+def _build_custom_buttons_text() -> str:
+    buttons = db.get_custom_menu_buttons()
+    if not buttons:
+        return "➕ <b>Кастомные кнопки</b>\n\nПока кнопок нет."
+
+    lines = ["➕ <b>Кастомные кнопки</b>", ""]
+    for button in buttons:
+        lines.append(
+            f"• <code>{button['id']}</code> | {button.get('type', 'callback')} | "
+            f"{button.get('label_ru') or button.get('label_en') or 'Button'}"
+        )
+    return "\n".join(lines)
+
+
+async def admin_menu_custom_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    keyboard = [[InlineKeyboardButton("➕ Добавить кнопку", callback_data='admin_menu_custom_add')]]
+
+    for button in db.get_custom_menu_buttons():
+        button_id = button['id']
+        label = button.get('label_ru') or button.get('label_en') or 'Button'
+        keyboard.append([
+            InlineKeyboardButton(f"✏️ {label}", callback_data=f'admin_menu_custom_edit_{button_id}'),
+            InlineKeyboardButton("🗑", callback_data=f'admin_menu_custom_delete_{button_id}')
+        ])
+
+    keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_menu_editor')])
+    await query.edit_message_text(
+        _build_custom_buttons_text(),
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )
+
+
+async def admin_menu_custom_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    context.user_data['custom_menu_mode'] = 'add'
+    context.user_data['custom_menu_button'] = {'id': uuid4().hex[:10], 'enabled': True}
+    keyboard = [
+        [InlineKeyboardButton("🔗 URL кнопка", callback_data='admin_menu_custom_type_url')],
+        [InlineKeyboardButton("⚙️ Кнопка действия", callback_data='admin_menu_custom_type_callback')],
+        [InlineKeyboardButton("◀️ Назад", callback_data='admin_menu_custom')],
+    ]
+    await query.edit_message_text(
+        "Выберите тип новой кнопки:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def admin_menu_custom_edit_start(update: Update, context: ContextTypes.DEFAULT_TYPE, button_id: str):
+    query = update.callback_query
+    buttons = db.get_custom_menu_buttons()
+    button = next((b for b in buttons if b.get('id') == button_id), None)
+    if not button:
+        await query.answer("Кнопка не найдена", show_alert=True)
+        return
+
+    context.user_data['custom_menu_mode'] = 'edit'
+    context.user_data['custom_menu_button'] = dict(button)
+    context.user_data['custom_menu_edit_id'] = button_id
+    db.set_pending_action(query.from_user.id, 'admin_menu_custom_label_ru')
+
+    await query.edit_message_text(
+        "✏️ Редактирование кастомной кнопки\n\nВведите текст для RU (или /skip):",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data='admin_menu_custom')]])
+    )
+
+
+async def admin_menu_custom_choose_type(update: Update, context: ContextTypes.DEFAULT_TYPE, button_type: str):
+    query = update.callback_query
+    button = context.user_data.get('custom_menu_button', {})
+    button['type'] = button_type
+    context.user_data['custom_menu_button'] = button
+    db.set_pending_action(query.from_user.id, 'admin_menu_custom_label_ru')
+    await query.edit_message_text(
+        "Введите текст кнопки для RU:",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data='admin_menu_custom')]])
+    )
+
+
+async def handle_admin_menu_custom_input(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, text: str):
+    user = update.effective_user
+    button = context.user_data.get('custom_menu_button')
+    if not button:
+        db.clear_pending_action(user.id)
+        context.user_data.clear()
+        await update.message.reply_text("❌ Сессия редактирования кнопки сброшена.")
+        return
+
+    if action == 'admin_menu_custom_label_ru':
+        if text != '/skip' or context.user_data.get('custom_menu_mode') == 'add':
+            button['label_ru'] = text
+        db.set_pending_action(user.id, 'admin_menu_custom_label_uk')
+        await update.message.reply_text("Введите текст кнопки для UK (или /skip):")
+        return
+
+    if action == 'admin_menu_custom_label_uk':
+        if text != '/skip':
+            button['label_uk'] = text
+        db.set_pending_action(user.id, 'admin_menu_custom_label_en')
+        await update.message.reply_text("Введите текст кнопки для EN (или /skip):")
+        return
+
+    if action == 'admin_menu_custom_label_en':
+        if text != '/skip':
+            button['label_en'] = text
+
+        if button.get('type') == 'url':
+            db.set_pending_action(user.id, 'admin_menu_custom_url')
+            await update.message.reply_text("Введите URL кнопки (или /skip, чтобы оставить текущий):")
+        else:
+            db.clear_pending_action(user.id)
+            await update.message.reply_text(
+                "Выберите действие для кнопки:",
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton(label, callback_data=f'admin_menu_custom_target_{target}')]
+                     for target, label in _menu_target_options().items()] +
+                    [[InlineKeyboardButton("◀️ Назад", callback_data='admin_menu_custom')]]
+                )
+            )
+        return
+
+    if action == 'admin_menu_custom_url':
+        if text != '/skip':
+            if not (text.startswith('http://') or text.startswith('https://')):
+                await update.message.reply_text("❌ URL должен начинаться с http:// или https://")
+                return
+            button['target'] = text
+        elif not button.get('target'):
+            await update.message.reply_text("❌ Для новой URL-кнопки нужно указать ссылку.")
+            return
+        button.setdefault('sort_order', len(db.get_custom_menu_buttons()))
+        button.setdefault('created_at', datetime.now().isoformat())
+
+        buttons = db.get_custom_menu_buttons()
+        edit_id = context.user_data.get('custom_menu_edit_id')
+        if edit_id:
+            buttons = [b for b in buttons if b.get('id') != edit_id]
+        buttons.append(button)
+        ok = db.save_custom_menu_buttons(buttons)
+        db.clear_pending_action(user.id)
+        context.user_data.clear()
+
+        if ok:
+            await update.message.reply_text(
+                "✅ Кастомная кнопка сохранена.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_menu_custom')]])
+            )
+        else:
+            await update.message.reply_text("❌ Не удалось сохранить кастомную кнопку.")
+
+
+async def admin_menu_custom_choose_target(update: Update, context: ContextTypes.DEFAULT_TYPE, target: str):
+    query = update.callback_query
+    button = context.user_data.get('custom_menu_button')
+    if not button:
+        await query.answer("Сессия редактирования кнопки потеряна", show_alert=True)
+        return
+
+    button['target'] = target
+    button.setdefault('sort_order', len(db.get_custom_menu_buttons()))
+    button.setdefault('created_at', datetime.now().isoformat())
+
+    buttons = db.get_custom_menu_buttons()
+    edit_id = context.user_data.get('custom_menu_edit_id')
+    if edit_id:
+        buttons = [b for b in buttons if b.get('id') != edit_id]
+    buttons.append(button)
+
+    ok = db.save_custom_menu_buttons(buttons)
+    db.clear_pending_action(query.from_user.id)
+    context.user_data.clear()
+
+    await query.edit_message_text(
+        "✅ Кастомная кнопка сохранена." if ok else "❌ Не удалось сохранить кастомную кнопку.",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_menu_custom')]])
+    )
+
+
+async def admin_menu_custom_delete(update: Update, context: ContextTypes.DEFAULT_TYPE, button_id: str):
+    query = update.callback_query
+    buttons = [b for b in db.get_custom_menu_buttons() if b.get('id') != button_id]
+    ok = db.save_custom_menu_buttons(buttons)
+    await query.edit_message_text(
+        "✅ Кнопка удалена." if ok else "❌ Не удалось удалить кнопку.",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_menu_custom')]])
+    )

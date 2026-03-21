@@ -193,6 +193,11 @@ class Database:
                     created_at TEXT,
                     updated_at TEXT
                 )""",
+                """CREATE TABLE IF NOT EXISTS bot_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
+                    updated_at TEXT
+                )""",
             ]
         else:
             queries = [
@@ -306,6 +311,11 @@ class Database:
                     photo_url TEXT,
                     sort_order INTEGER DEFAULT 0,
                     created_at TEXT,
+                    updated_at TEXT
+                )""",
+                """CREATE TABLE IF NOT EXISTS bot_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
                     updated_at TEXT
                 )""",
             ]
@@ -749,6 +759,109 @@ class Database:
         except Exception as e:
             logger.error(f"Error getting categories: {e}")
             return {cat_id: (names.get(lang) or names['ru']) for cat_id, names in DEFAULT_CATEGORIES.items()}
+
+    def get_setting(self, key: str, default: Optional[str] = None) -> Optional[str]:
+        try:
+            result = self.execute(
+                "SELECT value FROM bot_settings WHERE key = ?",
+                (key,),
+                fetch=True
+            )
+            if not result:
+                return default
+            return result[0]['value'] if self.use_postgres else result[0][0]
+        except Exception as e:
+            logger.error(f"Failed to get setting {key}: {e}")
+            return default
+
+    def set_setting(self, key: str, value: str) -> bool:
+        now = datetime.now().isoformat()
+        try:
+            if self.use_postgres:
+                query = """INSERT INTO bot_settings (key, value, updated_at)
+                           VALUES (%s, %s, %s)
+                           ON CONFLICT (key) DO UPDATE
+                           SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at"""
+                params = (key, value, now)
+            else:
+                query = """INSERT INTO bot_settings (key, value, updated_at)
+                           VALUES (?, ?, ?)
+                           ON CONFLICT(key) DO UPDATE SET
+                           value = excluded.value,
+                           updated_at = excluded.updated_at"""
+                params = (key, value, now)
+
+            self.execute(query, params, commit=True)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save setting {key}: {e}")
+            return False
+
+    def get_setting_json(self, key: str, default: Any = None) -> Any:
+        raw = self.get_setting(key)
+        if raw is None:
+            return default
+        try:
+            return json.loads(raw)
+        except Exception as e:
+            logger.error(f"Failed to decode JSON setting {key}: {e}")
+            return default
+
+    def set_setting_json(self, key: str, value: Any) -> bool:
+        try:
+            return self.set_setting(key, json.dumps(value, ensure_ascii=False))
+        except Exception as e:
+            logger.error(f"Failed to encode JSON setting {key}: {e}")
+            return False
+
+    def get_home_content(self) -> dict:
+        data = self.get_setting_json('home_content', default={}) or {}
+        return {
+            'text_ru': data.get('text_ru'),
+            'text_uk': data.get('text_uk'),
+            'text_en': data.get('text_en'),
+            'photo_file_id': data.get('photo_file_id'),
+        }
+
+    def save_home_content(self, data: dict) -> bool:
+        current = self.get_home_content()
+        current.update(data or {})
+        return self.set_setting_json('home_content', current)
+
+    def get_main_menu_core(self) -> dict:
+        default = {
+            'services': {'ru': '🛒 Услуги', 'uk': '🛒 Послуги', 'en': '🛒 Services'},
+            'balance': {'ru': '💰 Баланс: ${balance}', 'uk': '💰 Баланс: ${balance}', 'en': '💰 Balance: ${balance}'},
+            'profile': {'ru': '👤 Профиль', 'uk': '👤 Профіль', 'en': '👤 Profile'},
+            'referral': {'ru': '🔗 Рефералка', 'uk': '🔗 Рефералка', 'en': '🔗 Referral'},
+        }
+        data = self.get_setting_json('main_menu_core', default=default) or {}
+        for key, labels in default.items():
+            data.setdefault(key, {})
+            for lang, value in labels.items():
+                data[key].setdefault(lang, value)
+        return data
+
+    def save_main_menu_core(self, data: dict) -> bool:
+        current = self.get_main_menu_core()
+        for key, labels in (data or {}).items():
+            current.setdefault(key, {})
+            current[key].update(labels or {})
+        return self.set_setting_json('main_menu_core', current)
+
+    def get_custom_menu_buttons(self) -> List[dict]:
+        buttons = self.get_setting_json('main_menu_custom_buttons', default=[]) or []
+        if not isinstance(buttons, list):
+            return []
+        return sorted(buttons, key=lambda b: (b.get('sort_order', 9999), b.get('created_at', '')))
+
+    def save_custom_menu_buttons(self, buttons: List[dict]) -> bool:
+        normalized = []
+        for index, button in enumerate(buttons or []):
+            item = dict(button)
+            item.setdefault('sort_order', index)
+            normalized.append(item)
+        return self.set_setting_json('main_menu_custom_buttons', normalized)
 
     def get_category(self, cat_id: str) -> Optional[dict]:
         """Получить категорию с метаданными."""

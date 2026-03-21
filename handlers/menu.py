@@ -14,7 +14,8 @@ from handlers.profile import handle_profile, handle_referral, handle_purchase_hi
 from handlers.admin import (
     handle_admin,
     handle_admin_add_product_input,
-    handle_admin_photo_input
+    handle_admin_photo_input,
+    handle_admin_home_photo_input
 )
 import logging
 
@@ -170,9 +171,13 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         action, _ = pending
         if (
             action == 'admin_add_product_photo_waiting'
+            or action == 'admin_home_photo'
             or (action.startswith('admin_edit_') and action.endswith('_photo_waiting'))
         ):
-            await handle_admin_photo_input(update, context)
+            if action == 'admin_home_photo':
+                await handle_admin_home_photo_input(update, context)
+            else:
+                await handle_admin_photo_input(update, context)
         else:
             await message.reply_text(f"Ожидается действие: {action}\nФото сейчас не нужно.")
         return
@@ -307,6 +312,21 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     # Добавление категории (мультиязычный мастер)
+    if action in {'admin_home_text_ru', 'admin_home_text_uk', 'admin_home_text_en'}:
+        from handlers.admin import handle_admin_home_text_input
+        await handle_admin_home_text_input(update, context, action, text)
+        return
+
+    if action in {'admin_menu_core_label_ru', 'admin_menu_core_label_uk', 'admin_menu_core_label_en'}:
+        from handlers.admin import handle_admin_menu_core_input
+        await handle_admin_menu_core_input(update, context, action, text)
+        return
+
+    if action in {'admin_menu_custom_label_ru', 'admin_menu_custom_label_uk', 'admin_menu_custom_label_en', 'admin_menu_custom_url'}:
+        from handlers.admin import handle_admin_menu_custom_input
+        await handle_admin_menu_custom_input(update, context, action, text)
+        return
+
     if action.startswith('admin_add_category_'):
         from handlers.admin import handle_admin_add_category_input
         await handle_admin_add_category_input(update, context, action, text)

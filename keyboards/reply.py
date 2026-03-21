@@ -16,15 +16,49 @@ def get_text(key, user_id=None, **kwargs):
 def main_menu(user_id):
     """Главное меню"""
     balance = db.get_balance(user_id)
+    user = db.get_user(user_id) or {}
+    lang = user.get('language', 'ru')
+    core = db.get_main_menu_core()
+
+    services_label = core.get('services', {}).get(lang) or get_text('services', user_id)
+    profile_label = core.get('profile', {}).get(lang) or get_text('profile', user_id)
+    referral_label = core.get('referral', {}).get(lang) or get_text('referral', user_id)
+
+    balance_template = core.get('balance', {}).get(lang) or get_text('balance', user_id, balance=balance)
+    try:
+        balance_label = balance_template.format(balance=f"{balance:.2f}")
+    except Exception:
+        balance_label = balance_template
     
     keyboard = [
-        [InlineKeyboardButton(get_text('services', user_id), callback_data='services')],
+        [InlineKeyboardButton(services_label, callback_data='services')],
         [
-            InlineKeyboardButton(get_text('balance', user_id, balance=balance), callback_data='balance'),
-            InlineKeyboardButton(get_text('profile', user_id), callback_data='profile')
+            InlineKeyboardButton(balance_label, callback_data='balance'),
+            InlineKeyboardButton(profile_label, callback_data='profile')
         ],
-        [InlineKeyboardButton(get_text('referral', user_id), callback_data='referral')],
+        [InlineKeyboardButton(referral_label, callback_data='referral')],
     ]
+
+    for button in db.get_custom_menu_buttons():
+        if not button.get('enabled', True):
+            continue
+
+        label = (
+            button.get(f'label_{lang}')
+            or button.get('label_ru')
+            or button.get('label_en')
+            or 'Button'
+        )
+        target = button.get('target')
+        button_type = button.get('type')
+
+        if not target:
+            continue
+
+        if button_type == 'url':
+            keyboard.append([InlineKeyboardButton(label, url=target)])
+        else:
+            keyboard.append([InlineKeyboardButton(label, callback_data=target)])
     
     if user_id in ADMIN_IDS:
         keyboard.append([InlineKeyboardButton("👑 Админ-панель", callback_data='admin')])
