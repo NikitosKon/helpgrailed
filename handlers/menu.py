@@ -312,6 +312,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             # Скидка на следующую покупку
             context.user_data['active_promo'] = {
                 'id': promo['id'],
+                'code': code,
                 'type': promo['bonus_type'],
                 'value': promo['bonus_value']
             }
