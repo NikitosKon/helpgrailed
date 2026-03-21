@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 import logging
 import asyncio
 import re
@@ -16,7 +16,7 @@ from config import BOT_TOKEN, ADMIN_IDS, DB_FILE, SUPPORT_CONTACT, CRYPTO_TOKEN
 from database import db
 from crypto import crypto
 
-# Импорт обработчиков
+# РРјРїРѕСЂС‚ РѕР±СЂР°Р±РѕС‚С‡РёРєРѕРІ
 from handlers.start import start_command
 from handlers.menu import button_handler, text_handler
 from handlers.admin import handle_admin
@@ -35,7 +35,7 @@ from handlers.commands import (
     force_add_categories,
 )
 
-# Настройка логирования
+# РќР°СЃС‚СЂРѕР№РєР° Р»РѕРіРёСЂРѕРІР°РЅРёСЏ
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
@@ -47,13 +47,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# === Healthcheck сервер для Render ===
+# === Healthcheck СЃРµСЂРІРµСЂ РґР»СЏ Render ===
 async def healthcheck(request):
-    """Простой healthcheck для Render"""
+    """РџСЂРѕСЃС‚РѕР№ healthcheck РґР»СЏ Render"""
     return web.Response(text="Bot is running")
 
 async def run_healthcheck():
-    """Запуск healthcheck сервера"""
+    """Р—Р°РїСѓСЃРє healthcheck СЃРµСЂРІРµСЂР°"""
     app = web.Application()
     app.router.add_get('/', healthcheck)
     app.router.add_get('/health', healthcheck)
@@ -63,42 +63,42 @@ async def run_healthcheck():
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
-    logger.info(f"✅ Healthcheck server started on port {port}")
+    logger.info(f"вњ… Healthcheck server started on port {port}")
 
 
 async def set_commands(application: Application):
-    """Установка команд бота"""
+    """РЈСЃС‚Р°РЅРѕРІРєР° РєРѕРјР°РЅРґ Р±РѕС‚Р°"""
     commands = [
-        ("start", "🚀 Запустить бота"),
-        ("menu", "🏠 Главное меню"),
-        ("profile", "👤 Мой профиль"),
-        ("balance", "💰 Мой баланс"),
-        ("services", "🛒 Услуги"),
-        ("referral", "🔗 Рефералка"),
-        ("help", "❓ Помощь"),
-        ("language", "🌐 Выбрать язык"),
-        ("admin", "👑 Админ-панель"),
+        ("start", "рџљЂ Р—Р°РїСѓСЃС‚РёС‚СЊ Р±РѕС‚Р°"),
+        ("menu", "рџЏ  Р“Р»Р°РІРЅРѕРµ РјРµРЅСЋ"),
+        ("profile", "рџ‘¤ РњРѕР№ РїСЂРѕС„РёР»СЊ"),
+        ("balance", "рџ’° РњРѕР№ Р±Р°Р»Р°РЅСЃ"),
+        ("services", "рџ›’ РЈСЃР»СѓРіРё"),
+        ("referral", "рџ”— Р РµС„РµСЂР°Р»РєР°"),
+        ("help", "вќ“ РџРѕРјРѕС‰СЊ"),
+        ("language", "рџЊђ Р’С‹Р±СЂР°С‚СЊ СЏР·С‹Рє"),
+        ("admin", "рџ‘‘ РђРґРјРёРЅ-РїР°РЅРµР»СЊ"),
     ]
     
     await application.bot.set_my_commands([
         (cmd, desc) for cmd, desc in commands
     ])
     
-    logger.info("✅ Команды бота установлены")
+    logger.info("вњ… РљРѕРјР°РЅРґС‹ Р±РѕС‚Р° СѓСЃС‚Р°РЅРѕРІР»РµРЅС‹")
 
 
 async def check_pending_payments(context: ContextTypes.DEFAULT_TYPE):
-    """Периодическая проверка и очистка неподтверждённых платежей"""
+    """РџРµСЂРёРѕРґРёС‡РµСЃРєР°СЏ РїСЂРѕРІРµСЂРєР° Рё РѕС‡РёСЃС‚РєР° РЅРµРїРѕРґС‚РІРµСЂР¶РґС‘РЅРЅС‹С… РїР»Р°С‚РµР¶РµР№"""
     logger.info("Checking pending payments...")
     
     try:
         now = datetime.now()
         ten_minutes_ago = (now - timedelta(minutes=10)).isoformat()
         
-        # Определяем, используем ли мы PostgreSQL
+        # РћРїСЂРµРґРµР»СЏРµРј, РёСЃРїРѕР»СЊР·СѓРµРј Р»Рё РјС‹ PostgreSQL
         use_postgres = hasattr(db, 'use_postgres') and db.use_postgres
         
-        # 1. Удаляем старые неоплаченные инвойсы (старше 10 минут)
+        # 1. РЈРґР°Р»СЏРµРј СЃС‚Р°СЂС‹Рµ РЅРµРѕРїР»Р°С‡РµРЅРЅС‹Рµ РёРЅРІРѕР№СЃС‹ (СЃС‚Р°СЂС€Рµ 10 РјРёРЅСѓС‚)
         if use_postgres:
             old_pending = db.execute(
                 "SELECT * FROM transactions WHERE status = 'pending' AND type = 'deposit' AND created_at < %s",
@@ -129,7 +129,7 @@ async def check_pending_payments(context: ContextTypes.DEFAULT_TYPE):
                     )
                 logger.info(f"Payment {trans_dict['invoice_id']} marked as expired (older than 10 min)")
         
-        # 2. Проверяем актуальные pending транзакции (не старше 10 минут)
+        # 2. РџСЂРѕРІРµСЂСЏРµРј Р°РєС‚СѓР°Р»СЊРЅС‹Рµ pending С‚СЂР°РЅР·Р°РєС†РёРё (РЅРµ СЃС‚Р°СЂС€Рµ 10 РјРёРЅСѓС‚)
         if use_postgres:
             pending = db.execute(
                 "SELECT * FROM transactions WHERE status = 'pending' AND type = 'deposit' AND created_at >= %s",
@@ -176,8 +176,8 @@ async def check_pending_payments(context: ContextTypes.DEFAULT_TYPE):
                     try:
                         await context.bot.send_message(
                             trans_dict['user_id'],
-                            f"✅ Баланс пополнен на ${trans_dict['amount']:.2f}!\n"
-                            f"💰 Текущий баланс: ${db.get_balance(trans_dict['user_id']):.2f}"
+                            f"вњ… Р‘Р°Р»Р°РЅСЃ РїРѕРїРѕР»РЅРµРЅ РЅР° ${trans_dict['amount']:.2f}!\n"
+                            f"рџ’° РўРµРєСѓС‰РёР№ Р±Р°Р»Р°РЅСЃ: ${db.get_balance(trans_dict['user_id']):.2f}"
                         )
                     except Exception as e:
                         logger.error(f"Failed to notify user: {e}")
@@ -188,10 +188,10 @@ async def check_pending_payments(context: ContextTypes.DEFAULT_TYPE):
                         try:
                             await context.bot.send_message(
                                 admin_id,
-                                f"💰 <b>ПОДТВЕРЖДЕНИЕ ОПЛАТЫ</b>\n\n"
-                                f"👤 Пользователь: <code>{trans_dict['user_id']}</code>\n"
-                                f"💵 Сумма: ${trans_dict['amount']:.2f}\n"
-                                f"🔗 Invoice: <code>{trans_dict['invoice_id']}</code>",
+                                f"рџ’° <b>РџРћР”РўР’Р•Р Р–Р”Р•РќРР• РћРџР›РђРўР«</b>\n\n"
+                                f"рџ‘¤ РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ: <code>{trans_dict['user_id']}</code>\n"
+                                f"рџ’µ РЎСѓРјРјР°: ${trans_dict['amount']:.2f}\n"
+                                f"рџ”— Invoice: <code>{trans_dict['invoice_id']}</code>",
                                 parse_mode='HTML'
                             )
                         except:
@@ -214,7 +214,7 @@ async def check_pending_payments(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def payment_notification_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик сообщений от CryptoPay бота"""
+    """РћР±СЂР°Р±РѕС‚С‡РёРє СЃРѕРѕР±С‰РµРЅРёР№ РѕС‚ CryptoPay Р±РѕС‚Р°"""
     message = update.message
     
     if not message.from_user or message.from_user.username != "CryptoBot":
@@ -222,8 +222,8 @@ async def payment_notification_handler(update: Update, context: ContextTypes.DEF
     
     text = message.text or message.caption or ""
     
-    if "✅" in text and "оплачен" in text.lower():
-        invoice_match = re.search(r'№\s*(\d+)', text)
+    if "вњ…" in text and "РѕРїР»Р°С‡РµРЅ" in text.lower():
+        invoice_match = re.search(r'в„–\s*(\d+)', text)
         
         if invoice_match:
             invoice_id = invoice_match.group(1)
@@ -248,8 +248,8 @@ async def payment_notification_handler(update: Update, context: ContextTypes.DEF
                 try:
                     await context.bot.send_message(
                         trans_dict['user_id'],
-                        f"✅ Баланс пополнен на ${trans_dict['amount']:.2f}!\n"
-                        f"💰 Текущий баланс: ${db.get_balance(trans_dict['user_id']):.2f}"
+                        f"вњ… Р‘Р°Р»Р°РЅСЃ РїРѕРїРѕР»РЅРµРЅ РЅР° ${trans_dict['amount']:.2f}!\n"
+                        f"рџ’° РўРµРєСѓС‰РёР№ Р±Р°Р»Р°РЅСЃ: ${db.get_balance(trans_dict['user_id']):.2f}"
                     )
                 except:
                     pass
@@ -258,10 +258,10 @@ async def payment_notification_handler(update: Update, context: ContextTypes.DEF
                     try:
                         await context.bot.send_message(
                             admin_id,
-                            f"💰 <b>ПОДТВЕРЖДЕНИЕ ОПЛАТЫ</b>\n\n"
-                            f"👤 Пользователь: <code>{trans_dict['user_id']}</code>\n"
-                            f"💵 Сумма: ${trans_dict['amount']:.2f}\n"
-                            f"🔗 Invoice: <code>{invoice_id}</code>",
+                            f"рџ’° <b>РџРћР”РўР’Р•Р Р–Р”Р•РќРР• РћРџР›РђРўР«</b>\n\n"
+                            f"рџ‘¤ РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ: <code>{trans_dict['user_id']}</code>\n"
+                            f"рџ’µ РЎСѓРјРјР°: ${trans_dict['amount']:.2f}\n"
+                            f"рџ”— Invoice: <code>{invoice_id}</code>",
                             parse_mode='HTML'
                         )
                     except:
@@ -269,10 +269,11 @@ async def payment_notification_handler(update: Update, context: ContextTypes.DEF
 
 
 async def post_init(application: Application):
-    """Действия после инициализации бота"""
+    """Р”РµР№СЃС‚РІРёСЏ РїРѕСЃР»Рµ РёРЅРёС†РёР°Р»РёР·Р°С†РёРё Р±РѕС‚Р°"""
+    await run_healthcheck()
     await set_commands(application)
     
-    # Проверка платежей каждые 60 секунд
+    # РџСЂРѕРІРµСЂРєР° РїР»Р°С‚РµР¶РµР№ РєР°Р¶РґС‹Рµ 60 СЃРµРєСѓРЅРґ
     application.job_queue.run_repeating(
         check_pending_payments,
         interval=60,
@@ -283,33 +284,29 @@ async def post_init(application: Application):
 
 
 async def set_commands(application: Application):
-    """Установка команд бота."""
+    """РЈСЃС‚Р°РЅРѕРІРєР° РєРѕРјР°РЅРґ Р±РѕС‚Р°."""
     commands = [
-        ("start", "🚀 Запустить бота"),
-        ("menu", "🏠 Главное меню"),
-        ("profile", "👤 Мой профиль"),
-        ("balance", "💰 Мой баланс"),
-        ("services", "🛒 Услуги"),
-        ("referral", "🔗 Рефералка"),
-        ("faq", "❓ FAQ"),
-        ("help", "❓ Помощь"),
-        ("language", "🌐 Выбрать язык"),
-        ("admin", "👑 Админ-панель"),
+        ("start", "рџљЂ Р—Р°РїСѓСЃС‚РёС‚СЊ Р±РѕС‚Р°"),
+        ("menu", "рџЏ  Р“Р»Р°РІРЅРѕРµ РјРµРЅСЋ"),
+        ("profile", "рџ‘¤ РњРѕР№ РїСЂРѕС„РёР»СЊ"),
+        ("balance", "рџ’° РњРѕР№ Р±Р°Р»Р°РЅСЃ"),
+        ("services", "рџ›’ РЈСЃР»СѓРіРё"),
+        ("referral", "рџ”— Р РµС„РµСЂР°Р»РєР°"),
+        ("faq", "вќ“ FAQ"),
+        ("help", "вќ“ РџРѕРјРѕС‰СЊ"),
+        ("language", "рџЊђ Р’С‹Р±СЂР°С‚СЊ СЏР·С‹Рє"),
+        ("admin", "рџ‘‘ РђРґРјРёРЅ-РїР°РЅРµР»СЊ"),
     ]
     await application.bot.set_my_commands(commands)
-    logger.info("✅ Команды бота установлены")
+    logger.info("вњ… РљРѕРјР°РЅРґС‹ Р±РѕС‚Р° СѓСЃС‚Р°РЅРѕРІР»РµРЅС‹")
 
 
 def main():
-    """Запуск бота"""
+    """Р—Р°РїСѓСЃРє Р±РѕС‚Р°"""
     logger.info("Starting bot with healthcheck server...")
     
-    # Запускаем healthcheck сервер
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.create_task(run_healthcheck())
     
-    # Создаём приложение бота
+    # РЎРѕР·РґР°С‘Рј РїСЂРёР»РѕР¶РµРЅРёРµ Р±РѕС‚Р°
     application = (
         Application.builder()
         .token(BOT_TOKEN)
@@ -317,7 +314,7 @@ def main():
         .build()
     )
 
-    # Регистрируем обработчики команд
+    # Р РµРіРёСЃС‚СЂРёСЂСѓРµРј РѕР±СЂР°Р±РѕС‚С‡РёРєРё РєРѕРјР°РЅРґ
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("menu", menu_command))
     application.add_handler(CommandHandler("profile", profile_command))
@@ -332,21 +329,21 @@ def main():
     application.add_handler(CommandHandler("checkcats", check_categories_command))
     application.add_handler(CommandHandler("forcecats", force_add_categories))
 
-    # Регистрируем обработчики callback-запросов
+    # Р РµРіРёСЃС‚СЂРёСЂСѓРµРј РѕР±СЂР°Р±РѕС‚С‡РёРєРё callback-Р·Р°РїСЂРѕСЃРѕРІ
     application.add_handler(CallbackQueryHandler(language_callback, pattern='^lang_'))
     application.add_handler(CallbackQueryHandler(button_handler))
     
-    # Регистрируем обработчики сообщений
+    # Р РµРіРёСЃС‚СЂРёСЂСѓРµРј РѕР±СЂР°Р±РѕС‚С‡РёРєРё СЃРѕРѕР±С‰РµРЅРёР№
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     application.add_handler(MessageHandler(filters.PHOTO, text_handler))
     
-    # Обработчик сообщений от CryptoBot
+    # РћР±СЂР°Р±РѕС‚С‡РёРє СЃРѕРѕР±С‰РµРЅРёР№ РѕС‚ CryptoBot
     application.add_handler(MessageHandler(
         filters.ChatType.PRIVATE & filters.Entity("username"),
         payment_notification_handler
     ))
 
-    # Запускаем бота
+    # Р—Р°РїСѓСЃРєР°РµРј Р±РѕС‚Р°
     application.run_polling(
         allowed_updates=['message', 'callback_query'],
         drop_pending_updates=True
