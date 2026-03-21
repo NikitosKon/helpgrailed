@@ -210,8 +210,36 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
         await broadcast_send(update, context)
 
     elif data == 'broadcast_edit':
-        from handlers.admin_broadcast import broadcast_create_start
-        await broadcast_create_start(update, context)
+        from handlers.admin_broadcast import broadcast_edit_start
+        await broadcast_edit_start(update, context)
+
+    elif data == 'broadcast_add_photo':
+        from handlers.admin_broadcast import broadcast_add_photo_start
+        await broadcast_add_photo_start(update, context)
+
+    elif data == 'broadcast_remove_photo':
+        from handlers.admin_broadcast import broadcast_remove_photo
+        await broadcast_remove_photo(update, context)
+
+    elif data == 'broadcast_preview_again':
+        from handlers.admin_broadcast import broadcast_preview_again
+        await broadcast_preview_again(update, context)
+
+    elif data == 'broadcast_save_draft':
+        from handlers.admin_broadcast import broadcast_save_draft_start
+        await broadcast_save_draft_start(update, context)
+
+    elif data == 'broadcast_drafts':
+        from handlers.admin_broadcast import broadcast_drafts_menu
+        await broadcast_drafts_menu(update, context)
+
+    elif data.startswith('broadcast_load_draft_'):
+        from handlers.admin_broadcast import broadcast_load_draft
+        await broadcast_load_draft(update, context, int(data.replace('broadcast_load_draft_', '')))
+
+    elif data.startswith('broadcast_delete_draft_'):
+        from handlers.admin_broadcast import broadcast_delete_draft
+        await broadcast_delete_draft(update, context, int(data.replace('broadcast_delete_draft_', '')))
 
     elif data == 'broadcast_cancel':
         from handlers.admin_broadcast import broadcast_cancel

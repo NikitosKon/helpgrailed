@@ -172,10 +172,14 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         if (
             action == 'admin_add_product_photo_waiting'
             or action == 'admin_home_photo'
+            or action == 'broadcast_photo'
             or (action.startswith('admin_edit_') and action.endswith('_photo_waiting'))
         ):
             if action == 'admin_home_photo':
                 await handle_admin_home_photo_input(update, context)
+            elif action == 'broadcast_photo':
+                from handlers.admin_broadcast import handle_broadcast_photo_input
+                await handle_broadcast_photo_input(update, context)
             else:
                 await handle_admin_photo_input(update, context)
         else:
@@ -199,6 +203,11 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if action == 'broadcast_text':
         from handlers.admin_broadcast import broadcast_preview
         await broadcast_preview(update, context, text)
+        return
+
+    if action == 'broadcast_draft_title':
+        from handlers.admin_broadcast import handle_broadcast_draft_title
+        await handle_broadcast_draft_title(update, context, text)
         return
 
     # Депозит — кастомная сумма

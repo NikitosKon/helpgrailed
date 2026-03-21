@@ -198,6 +198,15 @@ class Database:
                     value TEXT,
                     updated_at TEXT
                 )""",
+                """CREATE TABLE IF NOT EXISTS broadcast_drafts (
+                    id SERIAL PRIMARY KEY,
+                    title TEXT,
+                    text TEXT,
+                    photo_file_id TEXT,
+                    created_by BIGINT,
+                    created_at TEXT,
+                    updated_at TEXT
+                )""",
             ]
         else:
             queries = [
@@ -316,6 +325,15 @@ class Database:
                 """CREATE TABLE IF NOT EXISTS bot_settings (
                     key TEXT PRIMARY KEY,
                     value TEXT,
+                    updated_at TEXT
+                )""",
+                """CREATE TABLE IF NOT EXISTS broadcast_drafts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT,
+                    text TEXT,
+                    photo_file_id TEXT,
+                    created_by INTEGER,
+                    created_at TEXT,
                     updated_at TEXT
                 )""",
             ]
@@ -862,6 +880,80 @@ class Database:
             item.setdefault('sort_order', index)
             normalized.append(item)
         return self.set_setting_json('main_menu_custom_buttons', normalized)
+
+    def save_broadcast_draft(self, title: str, text: str, photo_file_id: Optional[str], created_by: int,
+                             draft_id: Optional[int] = None) -> Optional[int]:
+        now = datetime.now().isoformat()
+        try:
+            if draft_id:
+                self.execute(
+                    """UPDATE broadcast_drafts
+                       SET title = ?, text = ?, photo_file_id = ?, updated_at = ?
+                       WHERE id = ?""",
+                    (title, text, photo_file_id, now, draft_id),
+                    commit=True
+                )
+                return draft_id
+
+            if self.use_postgres:
+                result = self.execute(
+                    """INSERT INTO broadcast_drafts
+                       (title, text, photo_file_id, created_by, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?)
+                       RETURNING id""",
+                    (title, text, photo_file_id, created_by, now, now),
+                    fetch=True,
+                    commit=True
+                )
+                return result[0]['id'] if result else None
+
+            self.execute(
+                """INSERT INTO broadcast_drafts
+                   (title, text, photo_file_id, created_by, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (title, text, photo_file_id, created_by, now, now),
+                commit=True
+            )
+            result = self.execute("SELECT last_insert_rowid()", fetch=True)
+            return result[0][0] if result else None
+        except Exception as e:
+            logger.error(f"Failed to save broadcast draft: {e}")
+            return None
+
+    def get_broadcast_drafts(self) -> List[dict]:
+        try:
+            results = self.execute(
+                "SELECT * FROM broadcast_drafts ORDER BY updated_at DESC, id DESC",
+                fetch=True
+            )
+            return [dict(row) for row in results] if results else []
+        except Exception as e:
+            logger.error(f"Failed to get broadcast drafts: {e}")
+            return []
+
+    def get_broadcast_draft(self, draft_id: int) -> Optional[dict]:
+        try:
+            result = self.execute(
+                "SELECT * FROM broadcast_drafts WHERE id = ?",
+                (draft_id,),
+                fetch=True
+            )
+            return dict(result[0]) if result else None
+        except Exception as e:
+            logger.error(f"Failed to get broadcast draft {draft_id}: {e}")
+            return None
+
+    def delete_broadcast_draft(self, draft_id: int) -> bool:
+        try:
+            self.execute(
+                "DELETE FROM broadcast_drafts WHERE id = ?",
+                (draft_id,),
+                commit=True
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete broadcast draft {draft_id}: {e}")
+            return False
 
     def get_category(self, cat_id: str) -> Optional[dict]:
         """Получить категорию с метаданными."""
