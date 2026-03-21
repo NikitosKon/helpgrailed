@@ -1,21 +1,22 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
+
 from database import db
-from keyboards.reply import main_menu
 from config import LANGUAGES
+from handlers.start import send_home_screen
+
 import logging
 
 logger = logging.getLogger(__name__)
 
+
 async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /language - показать выбор языка"""
     user = update.effective_user
-    
+
     user_data = db.get_user(user.id)
     current_lang = user_data.get('language', 'ru') if user_data else 'ru'
-    
     text = LANGUAGES[current_lang]['choose_language']
-    
+
     keyboard = [
         [
             InlineKeyboardButton("🇷🇺 Русский", callback_data='lang_ru'),
@@ -24,7 +25,7 @@ async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🇺🇦 Українська", callback_data='lang_uk')],
         [InlineKeyboardButton("◀️ Назад", callback_data='menu')]
     ]
-    
+
     if update.callback_query:
         await update.callback_query.edit_message_text(
             text,
@@ -36,35 +37,28 @@ async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
+
 async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик выбора языка"""
     query = update.callback_query
     await query.answer()
-    
+
     user = query.from_user
     lang = query.data.replace('lang_', '')
     if lang not in LANGUAGES:
         await query.answer("❌ Unsupported language", show_alert=True)
         return
-    
-    # Сохраняем язык пользователя в БД
+
     db.execute(
         "UPDATE users SET language = ? WHERE user_id = ?",
         (lang, user.id),
         commit=True
     )
-    
-    # Очищаем user_data
+
     context.user_data.clear()
-    
-    # Показываем подтверждение + главное меню на выбранном языке
-    text = (
-        f"{LANGUAGES[lang]['language_changed']}\n\n"
-        f"{LANGUAGES[lang]['welcome'].format(name=user.first_name)}"
-    )
-    
-    await query.edit_message_text(
-        text,
-        reply_markup=main_menu(user.id),
-        parse_mode='HTML'
-    )
+
+    try:
+        await query.message.delete()
+    except Exception:
+        pass
+
+    await send_home_screen(context, user, lang, query.message.chat_id)
