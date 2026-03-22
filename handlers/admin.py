@@ -294,6 +294,9 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
     elif data.startswith('admin_product_duplicate_'):
         await admin_duplicate_product(update, context, int(data.replace('admin_product_duplicate_', '')))
 
+    elif data.startswith('admin_product_multibuy_'):
+        await admin_toggle_product_multi_quantity(update, context, int(data.replace('admin_product_multibuy_', '')))
+
     elif data.startswith('admin_edit_') and len(data.split('_')) == 3:
         try:
             pid = int(data.split('_')[2])
@@ -812,6 +815,7 @@ def _get_product_edit_current(prod):
             'price': prod.get('price_usd'),
             'desc': prod.get('description'),
             'stock': prod.get('stock'),
+            'allow_multi_quantity': prod.get('allow_multi_quantity', 1),
             'sort': prod.get('sort_order', 0),
             'photo': prod.get('photo_url'),
         }
@@ -823,6 +827,7 @@ def _get_product_edit_current(prod):
         'price': prod[3],
         'desc': prod[4],
         'stock': prod[5],
+        'allow_multi_quantity': 1,
         'sort': prod[7] if len(prod) > 7 else 0,
         'photo': prod[8] if len(prod) > 8 else None,
     }
@@ -831,7 +836,9 @@ def _get_product_edit_current(prod):
 def _build_product_edit_keyboard(product_id: int):
     product = db.get_product(product_id) or {}
     is_active = product.get('is_active', 1) if isinstance(product, dict) else 1
+    allow_multi = bool(product.get('allow_multi_quantity', 1)) if isinstance(product, dict) else True
     publish_label = "📤 Опубликовать" if not is_active else "📝 В черновик"
+    multi_label = "🔢 Кол-во: несколько" if allow_multi else "1️⃣ Кол-во: только 1"
     return [
         [
             InlineKeyboardButton("📝 Название", callback_data=f'admin_edit_product_field_{product_id}_name'),
@@ -850,6 +857,9 @@ def _build_product_edit_keyboard(product_id: int):
             InlineKeyboardButton("🖼 Фото", callback_data=f'admin_edit_product_field_{product_id}_photo'),
         ],
         [
+            InlineKeyboardButton(multi_label, callback_data=f'admin_product_multibuy_{product_id}'),
+        ],
+        [
             InlineKeyboardButton(publish_label, callback_data=f'admin_product_toggle_{product_id}'),
             InlineKeyboardButton("📄 Дублировать", callback_data=f'admin_product_duplicate_{product_id}'),
         ],
@@ -865,6 +875,7 @@ def _build_product_edit_text(product_id: int, prod) -> str:
     stock_value = current['stock']
     stock_str = '∞' if isinstance(stock_value, int) and stock_value < 0 else str(stock_value)
     photo_str = "есть" if current.get('photo') else "нет"
+    multi_str = "несколько копий" if current.get('allow_multi_quantity', 1) else "только 1 копия"
     status_str = _draft_status_label(prod.get('is_active', 1) if isinstance(prod, dict) else 1)
     desc = current.get('desc') or 'нет'
     if len(desc) > 200:
@@ -877,6 +888,7 @@ def _build_product_edit_text(product_id: int, prod) -> str:
         f"Подкатегория: <code>{html.escape(current.get('subcategory') or '-')}</code>\n"
         f"Цена: ${current.get('price')}\n"
         f"Запас: {stock_str}\n"
+        f"Покупка: {multi_str}\n"
         f"Sort order: {current.get('sort', 0)}\n"
         f"Статус: {status_str}\n"
         f"Фото: {photo_str}\n"
@@ -1027,6 +1039,22 @@ async def admin_duplicate_product(update: Update, context: ContextTypes.DEFAULT_
 
     await query.answer("Создан дубликат в черновиках", show_alert=False)
     await admin_edit_product_start(update, context, new_id)
+
+
+async def admin_toggle_product_multi_quantity(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int):
+    query = update.callback_query
+    prod = db.get_product(product_id)
+    if not prod:
+        await query.answer("Товар не найден", show_alert=True)
+        return
+
+    new_value = 0 if prod.get('allow_multi_quantity', 1) else 1
+    ok = db.update_product(product_id, allow_multi_quantity=new_value, is_active=0)
+    if ok:
+        await query.answer("Режим покупки обновлён", show_alert=False)
+        await admin_edit_product_start(update, context, product_id)
+    else:
+        await query.answer("Не удалось изменить режим покупки", show_alert=True)
 
 
 async def admin_delete_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):

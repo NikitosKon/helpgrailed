@@ -160,6 +160,7 @@ class Database:
                     description_en TEXT,
                     stock INTEGER DEFAULT -1,
                     is_active INTEGER DEFAULT 1,
+                    allow_multi_quantity INTEGER DEFAULT 1,
                     sort_order INTEGER DEFAULT 0,
                     photo_url TEXT,
                     created_at TEXT,
@@ -310,6 +311,7 @@ class Database:
                     description_en TEXT,
                     stock INTEGER DEFAULT -1,
                     is_active INTEGER DEFAULT 1,
+                    allow_multi_quantity INTEGER DEFAULT 1,
                     sort_order INTEGER DEFAULT 0,
                     photo_url TEXT,
                     created_at TEXT,
@@ -460,6 +462,7 @@ class Database:
                 self.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS description_uk TEXT", commit=True)
                 self.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS description_en TEXT", commit=True)
                 self.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS subcategory TEXT", commit=True)
+                self.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS allow_multi_quantity INTEGER DEFAULT 1", commit=True)
                 self.execute(
                     """CREATE TABLE IF NOT EXISTS subcategories (
                         id SERIAL PRIMARY KEY,
@@ -513,6 +516,7 @@ class Database:
                     ("description_uk", "TEXT"),
                     ("description_en", "TEXT"),
                     ("subcategory", "TEXT"),
+                    ("allow_multi_quantity", "INTEGER DEFAULT 1"),
                 ]
                 for col_name, col_type in missing:
                     if col_name not in prod_col_names:
@@ -1168,19 +1172,20 @@ class Database:
                    subcategory: Optional[str] = None,
                    description: Optional[str] = None, stock: int = -1, 
                    sort_order: int = 0, photo_url: Optional[str] = None,
-                   input_lang: str = 'ru', is_active: int = 0) -> bool:
+                   input_lang: str = 'ru', is_active: int = 0,
+                   allow_multi_quantity: int = 1) -> bool:
         now = datetime.now().isoformat()
         try:
             name_i18n = build_i18n_triplet(name, source_lang=input_lang)
             desc_i18n = build_i18n_triplet(description, source_lang=input_lang) if description else {'ru': None, 'uk': None, 'en': None}
             self.execute(
                 """INSERT INTO products
-                   (category, subcategory, name, name_ru, name_uk, name_en, price_usd, description, description_ru, description_uk, description_en, stock, is_active, sort_order, photo_url, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (category, subcategory, name, name_ru, name_uk, name_en, price_usd, description, description_ru, description_uk, description_en, stock, is_active, allow_multi_quantity, sort_order, photo_url, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     category, subcategory, name, name_i18n['ru'], name_i18n['uk'], name_i18n['en'],
                     price, description, desc_i18n['ru'], desc_i18n['uk'], desc_i18n['en'],
-                    stock, is_active, sort_order, photo_url, now, now
+                    stock, is_active, allow_multi_quantity, sort_order, photo_url, now, now
                 ),
                 commit=True
             )
@@ -1194,7 +1199,7 @@ class Database:
     def update_product(self, product_id: int, **kwargs) -> bool:
         input_lang = kwargs.pop('input_lang', 'ru')
         allowed = ['category', 'subcategory', 'name', 'price_usd', 'description',
-                  'stock', 'sort_order', 'is_active', 'photo_url',
+                  'stock', 'sort_order', 'is_active', 'photo_url', 'allow_multi_quantity',
                   'name_ru', 'name_uk', 'name_en', 'description_ru', 'description_uk', 'description_en']
 
         if 'name' in kwargs:
@@ -1250,8 +1255,8 @@ class Database:
             if self.use_postgres:
                 result = self.execute(
                     """INSERT INTO products
-                       (category, subcategory, name, name_ru, name_uk, name_en, price_usd, description, description_ru, description_uk, description_en, stock, is_active, sort_order, photo_url, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       (category, subcategory, name, name_ru, name_uk, name_en, price_usd, description, description_ru, description_uk, description_en, stock, is_active, allow_multi_quantity, sort_order, photo_url, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                        RETURNING id""",
                     (
                         product.get('category'),
@@ -1267,6 +1272,7 @@ class Database:
                         product.get('description_en'),
                         product.get('stock', -1),
                         0,
+                        product.get('allow_multi_quantity', 1),
                         product.get('sort_order', 0),
                         product.get('photo_url'),
                         now,
@@ -1279,8 +1285,8 @@ class Database:
             else:
                 self.execute(
                     """INSERT INTO products
-                       (category, subcategory, name, name_ru, name_uk, name_en, price_usd, description, description_ru, description_uk, description_en, stock, is_active, sort_order, photo_url, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       (category, subcategory, name, name_ru, name_uk, name_en, price_usd, description, description_ru, description_uk, description_en, stock, is_active, allow_multi_quantity, sort_order, photo_url, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         product.get('category'),
                         product.get('subcategory'),
@@ -1295,6 +1301,7 @@ class Database:
                         product.get('description_en'),
                         product.get('stock', -1),
                         0,
+                        product.get('allow_multi_quantity', 1),
                         product.get('sort_order', 0),
                         product.get('photo_url'),
                         now,

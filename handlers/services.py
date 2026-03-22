@@ -137,12 +137,19 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
     logger.info(f"Category selected: {category}")
 
     if category == 'support':
+        category_info = db.get_category(category)
+        category_photo = category_info.get('photo_url') if category_info else None
         text = f"{get_text('support_title', user.id)}\n\n{get_text('support_contact_text', user.id)}"
         keyboard = [
             [InlineKeyboardButton(SUPPORT_CONTACT, url=f"https://t.me/{SUPPORT_CONTACT.replace('@', '')}")],
             [InlineKeyboardButton(get_text('back', user.id), callback_data='services')]
         ]
-        await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard))
+        await _send_photo_or_text(
+            query,
+            text,
+            photo_source=category_photo,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
         return
 
     try:
@@ -362,15 +369,13 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
     if isinstance(prod, dict):
         product_name = prod.get('name', 'Товар')
         product_price = prod.get('price_usd', 0)
-        product_category = prod.get('category', '')
-        product_subcategory = prod.get('subcategory')
         product_stock = prod.get('stock', -1)
+        allow_multi_quantity = bool(prod.get('allow_multi_quantity', 1))
     else:
         product_name = prod[2]
         product_price = prod[3]
-        product_category = prod[1]
-        product_subcategory = None
         product_stock = prod[5]
+        allow_multi_quantity = True
 
     if product_price is not None and product_price < 0:
         await _edit_or_send(
@@ -378,6 +383,10 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
             "❌ Эта позиция недоступна для покупки.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(get_text('back', user.id), callback_data=f'prod_{product_id}')]])
         )
+        return
+
+    if not allow_multi_quantity:
+        await handle_buy_quantity(update, context, product_id, 1)
         return
 
     max_qty = 10 if product_stock < 0 else max(1, min(product_stock, 10))
@@ -418,43 +427,129 @@ async def handle_buy_quantity(update: Update, context: ContextTypes.DEFAULT_TYPE
     if isinstance(prod, dict):
         product_name = prod.get('name', 'Товар')
         product_price = prod.get('price_usd', 0)
+        product_stock = prod.get('stock', -1)
+        allow_multi_quantity = bool(prod.get('allow_multi_quantity', 1))
+    else:
+        product_name = prod[2]
+        product_price = prod[3]
+        product_stock = prod[5]
+        allow_multi_quantity = True
+
+    if quantity <= 0:
+        await query.answer("Некорректное количество", show_alert=True)
+        return
+
+    if not allow_multi_quantity:
+        quantity = 1
+
+    if product_stock == 0 or (product_stock > 0 and quantity > product_stock):
+        await _edit_or_send(
+            query,
+            "❌ Недостаточно товара на складе.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(get_text('back', user.id), callback_data=f'prod_{product_id}')],
+            ]),
+            parse_mode='HTML'
+        )
+        return
+
+    total_price = product_price * quantity
+    confirm_text = (
+        f"🧾 <b>Подтверждение покупки</b>\n\n"
+        f"📦 Товар: {product_name}\n"
+        f"🔢 Количество: {quantity}\n"
+        f"💰 Цена за 1 шт: ${product_price:.2f}\n"
+        f"💳 Итого: ${total_price:.2f}\n"
+        f"📦 В наличии: {_stock_str(product_stock)}\n\n"
+        "Подтвердить покупку?"
+    )
+    keyboard = [
+        [InlineKeyboardButton("✅ Подтвердить", callback_data=f'buyconfirm_{product_id}_{quantity}')],
+        [InlineKeyboardButton(get_text('back', user.id), callback_data=(f'buy_{product_id}' if allow_multi_quantity else f'prod_{product_id}'))],
+        [InlineKeyboardButton(get_text('main_menu', user.id), callback_data='menu')],
+    ]
+
+    await _edit_or_send(
+        query,
+        confirm_text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )
+
+
+async def handle_buy_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int, quantity: int):
+    query = update.callback_query
+    user = query.from_user
+
+    user_data = db.get_user(user.id) or {}
+    user_lang = user_data.get('language', 'ru')
+    prod = db.get_product(product_id, lang=user_lang)
+    if not prod:
+        await query.answer("❌ Товар не найден", show_alert=True)
+        return
+
+    if isinstance(prod, dict):
+        product_name = prod.get('name', 'Товар')
+        product_price = prod.get('price_usd', 0)
         product_category = prod.get('category', '')
         product_subcategory = prod.get('subcategory')
+        product_stock = prod.get('stock', -1)
+        allow_multi_quantity = bool(prod.get('allow_multi_quantity', 1))
     else:
         product_name = prod[2]
         product_price = prod[3]
         product_category = prod[1]
         product_subcategory = None
+        product_stock = prod[5]
+        allow_multi_quantity = True
+
+    if quantity <= 0:
+        await query.answer("Некорректное количество", show_alert=True)
+        return
+
+    if not allow_multi_quantity:
+        quantity = 1
+
+    total_price = product_price * quantity
+    balance = db.get_balance(user.id)
+    if balance < total_price:
+        need = total_price - balance
+        await _edit_or_send(
+            query,
+            f"❌ Недостаточно средств\n\n"
+            f"💰 Нужно: ${total_price:.2f}\n"
+            f"💳 Ваш баланс: ${balance:.2f}\n"
+            f"❌ Не хватает: ${need:.2f}",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("💰 Пополнить", callback_data='deposit')],
+                [InlineKeyboardButton(get_text('back', user.id), callback_data=f'prod_{product_id}')],
+            ]),
+            parse_mode='HTML'
+        )
+        return
+
+    if product_stock == 0 or (product_stock > 0 and quantity > product_stock):
+        back_cb = f"subcat|{product_category}|{product_subcategory}" if product_subcategory else f'cat_{product_category}'
+        await _edit_or_send(
+            query,
+            "❌ Товар закончился. Попробуйте другой товар.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(get_text('back', user.id), callback_data=back_cb)],
+            ]),
+            parse_mode='HTML'
+        )
+        return
 
     success, message, product_data = db.purchase(user.id, product_id, quantity=quantity)
 
     if not success:
-        total_price = product_price * quantity
-        if "Недостаточно средств" in message:
-            balance = db.get_balance(user.id)
-            need = total_price - balance
-            text = (
-                f"❌ Недостаточно средств\n\n"
-                f"💰 Нужно: ${total_price:.2f}\n"
-                f"💳 Ваш баланс: ${balance:.2f}\n"
-                f"❌ Не хватает: ${need:.2f}"
-            )
-            keyboard = [
-                [InlineKeyboardButton("💰 Пополнить", callback_data='deposit')],
-                [InlineKeyboardButton(get_text('back', user.id), callback_data=f'prod_{product_id}')]
-            ]
-        elif "закончился" in message:
-            text = "❌ Товар закончился. Попробуйте другой товар."
-            back_cb = f"subcat|{product_category}|{product_subcategory}" if product_subcategory else f'cat_{product_category}'
-            keyboard = [[InlineKeyboardButton(get_text('back', user.id), callback_data=back_cb)]]
-        else:
-            text = f"❌ Ошибка: {message}"
-            keyboard = [[InlineKeyboardButton(get_text('back', user.id), callback_data='services')]]
-
         await _edit_or_send(
             query,
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
+            f"❌ Ошибка покупки: {message}",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(get_text('back', user.id), callback_data=f'prod_{product_id}')],
+                [InlineKeyboardButton(get_text('main_menu', user.id), callback_data='menu')],
+            ]),
             parse_mode='HTML'
         )
         return
