@@ -250,6 +250,40 @@ class Database:
                     created_at TEXT,
                     updated_at TEXT
                 )""",
+                """CREATE TABLE IF NOT EXISTS giveaways (
+                    id SERIAL PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    photo_file_id TEXT,
+                    ends_at TEXT NOT NULL,
+                    status TEXT DEFAULT 'active',
+                    published INTEGER DEFAULT 1,
+                    published_in_menu INTEGER DEFAULT 0,
+                    required_channel TEXT,
+                    min_balance REAL DEFAULT 0,
+                    min_purchases INTEGER DEFAULT 0,
+                    winners_count INTEGER DEFAULT 1,
+                    prize_type TEXT NOT NULL,
+                    prize_value TEXT,
+                    public_participants INTEGER DEFAULT 0,
+                    auto_draw INTEGER DEFAULT 0,
+                    winner_ids TEXT,
+                    created_by BIGINT,
+                    created_at TEXT,
+                    updated_at TEXT,
+                    completed_at TEXT
+                )""",
+                """CREATE TABLE IF NOT EXISTS giveaway_entries (
+                    id SERIAL PRIMARY KEY,
+                    giveaway_id INTEGER NOT NULL,
+                    user_id BIGINT NOT NULL,
+                    username TEXT,
+                    entered_at TEXT,
+                    is_winner INTEGER DEFAULT 0,
+                    prize_awarded INTEGER DEFAULT 0,
+                    prize_awarded_at TEXT,
+                    UNIQUE(giveaway_id, user_id)
+                )""",
             ]
         else:
             queries = [
@@ -403,6 +437,42 @@ class Database:
                     created_by INTEGER,
                     created_at TEXT,
                     updated_at TEXT
+                )""",
+                """CREATE TABLE IF NOT EXISTS giveaways (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    photo_file_id TEXT,
+                    ends_at TEXT NOT NULL,
+                    status TEXT DEFAULT 'active',
+                    published INTEGER DEFAULT 1,
+                    published_in_menu INTEGER DEFAULT 0,
+                    required_channel TEXT,
+                    min_balance REAL DEFAULT 0,
+                    min_purchases INTEGER DEFAULT 0,
+                    winners_count INTEGER DEFAULT 1,
+                    prize_type TEXT NOT NULL,
+                    prize_value TEXT,
+                    public_participants INTEGER DEFAULT 0,
+                    auto_draw INTEGER DEFAULT 0,
+                    winner_ids TEXT,
+                    created_by INTEGER,
+                    created_at TEXT,
+                    updated_at TEXT,
+                    completed_at TEXT
+                )""",
+                """CREATE TABLE IF NOT EXISTS giveaway_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    giveaway_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    username TEXT,
+                    entered_at TEXT,
+                    is_winner INTEGER DEFAULT 0,
+                    prize_awarded INTEGER DEFAULT 0,
+                    prize_awarded_at TEXT,
+                    UNIQUE(giveaway_id, user_id),
+                    FOREIGN KEY (giveaway_id) REFERENCES giveaways(id),
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
                 )""",
             ]
         
@@ -2430,6 +2500,315 @@ class Database:
             (promo_id,),
             commit=True
         )
+
+    def create_giveaway(
+        self,
+        title: str,
+        description: str,
+        ends_at: str,
+        prize_type: str,
+        prize_value: Optional[str],
+        created_by: int,
+        photo_file_id: Optional[str] = None,
+        required_channel: Optional[str] = None,
+        min_balance: float = 0,
+        min_purchases: int = 0,
+        winners_count: int = 1,
+        public_participants: int = 0,
+        auto_draw: int = 0,
+        published: int = 1,
+        published_in_menu: int = 0,
+    ) -> Optional[int]:
+        now = datetime.now().isoformat()
+        try:
+            if self.use_postgres:
+                result = self.execute(
+                    """INSERT INTO giveaways
+                       (title, description, photo_file_id, ends_at, status, published, published_in_menu,
+                        required_channel, min_balance, min_purchases, winners_count, prize_type, prize_value,
+                        public_participants, auto_draw, created_by, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       RETURNING id""",
+                    (
+                        title, description, photo_file_id, ends_at, published, published_in_menu,
+                        required_channel, min_balance, min_purchases, winners_count, prize_type, prize_value,
+                        public_participants, auto_draw, created_by, now, now,
+                    ),
+                    fetch=True,
+                    commit=True,
+                )
+                return result[0]['id'] if result else None
+
+            self.execute(
+                """INSERT INTO giveaways
+                   (title, description, photo_file_id, ends_at, status, published, published_in_menu,
+                    required_channel, min_balance, min_purchases, winners_count, prize_type, prize_value,
+                    public_participants, auto_draw, created_by, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    title, description, photo_file_id, ends_at, published, published_in_menu,
+                    required_channel, min_balance, min_purchases, winners_count, prize_type, prize_value,
+                    public_participants, auto_draw, created_by, now, now,
+                ),
+                commit=True,
+            )
+            result = self.execute("SELECT last_insert_rowid()", fetch=True)
+            return result[0][0] if result else None
+        except Exception as e:
+            logger.error(f"Failed to create giveaway: {e}")
+            return None
+
+    def update_giveaway(self, giveaway_id: int, **fields) -> bool:
+        if not fields:
+            return True
+        try:
+            updates = []
+            params = []
+            for key, value in fields.items():
+                updates.append(f"{key} = ?")
+                params.append(value)
+            updates.append("updated_at = ?")
+            params.append(datetime.now().isoformat())
+            params.append(giveaway_id)
+            self.execute(
+                f"UPDATE giveaways SET {', '.join(updates)} WHERE id = ?",
+                tuple(params),
+                commit=True,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update giveaway {giveaway_id}: {e}")
+            return False
+
+    def get_giveaway(self, giveaway_id: int) -> Optional[dict]:
+        try:
+            result = self.execute(
+                "SELECT * FROM giveaways WHERE id = ?",
+                (giveaway_id,),
+                fetch=True,
+            )
+            return dict(result[0]) if result else None
+        except Exception as e:
+            logger.error(f"Failed to get giveaway {giveaway_id}: {e}")
+            return None
+
+    def get_giveaways(self, status: Optional[str] = None, published_only: bool = False, menu_only: bool = False) -> List[dict]:
+        try:
+            query = "SELECT * FROM giveaways WHERE 1=1"
+            params: List[Any] = []
+            if status:
+                query += " AND status = ?"
+                params.append(status)
+            if published_only:
+                query += " AND published = 1"
+            if menu_only:
+                query += " AND published_in_menu = 1"
+            query += " ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END, ends_at ASC, id DESC"
+            results = self.execute(query, tuple(params), fetch=True)
+            return [dict(row) for row in results] if results else []
+        except Exception as e:
+            logger.error(f"Failed to get giveaways: {e}")
+            return []
+
+    def has_public_giveaways(self) -> bool:
+        try:
+            result = self.execute(
+                "SELECT COUNT(*) as count FROM giveaways WHERE status = 'active' AND published = 1 AND published_in_menu = 1",
+                fetch=True,
+            )
+            if not result:
+                return False
+            return (result[0]['count'] if self.use_postgres else result[0][0]) > 0
+        except Exception:
+            return False
+
+    def get_due_auto_giveaways(self) -> List[dict]:
+        try:
+            result = self.execute(
+                "SELECT * FROM giveaways WHERE status = 'active' AND auto_draw = 1 AND ends_at <= ?",
+                (datetime.now().isoformat(),),
+                fetch=True,
+            )
+            return [dict(row) for row in result] if result else []
+        except Exception as e:
+            logger.error(f"Failed to get due giveaways: {e}")
+            return []
+
+    def has_entered_giveaway(self, giveaway_id: int, user_id: int) -> bool:
+        try:
+            result = self.execute(
+                "SELECT id FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?",
+                (giveaway_id, user_id),
+                fetch=True,
+            )
+            return bool(result)
+        except Exception:
+            return False
+
+    def enter_giveaway(self, giveaway_id: int, user_id: int, username: Optional[str] = None) -> bool:
+        try:
+            self.execute(
+                "INSERT INTO giveaway_entries (giveaway_id, user_id, username, entered_at) VALUES (?, ?, ?, ?)",
+                (giveaway_id, user_id, username, datetime.now().isoformat()),
+                commit=True,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to enter giveaway {giveaway_id}: {e}")
+            return False
+
+    def get_giveaway_entries(self, giveaway_id: int) -> List[dict]:
+        try:
+            result = self.execute(
+                """SELECT ge.*, u.first_name, u.balance
+                   FROM giveaway_entries ge
+                   LEFT JOIN users u ON u.user_id = ge.user_id
+                   WHERE ge.giveaway_id = ?
+                   ORDER BY ge.entered_at ASC, ge.id ASC""",
+                (giveaway_id,),
+                fetch=True,
+            )
+            return [dict(row) for row in result] if result else []
+        except Exception as e:
+            logger.error(f"Failed to get giveaway entries {giveaway_id}: {e}")
+            return []
+
+    def get_giveaway_winners(self, giveaway_id: int) -> List[dict]:
+        try:
+            result = self.execute(
+                """SELECT ge.*, u.first_name
+                   FROM giveaway_entries ge
+                   LEFT JOIN users u ON u.user_id = ge.user_id
+                   WHERE ge.giveaway_id = ? AND ge.is_winner = 1
+                   ORDER BY ge.prize_awarded_at ASC, ge.id ASC""",
+                (giveaway_id,),
+                fetch=True,
+            )
+            return [dict(row) for row in result] if result else []
+        except Exception as e:
+            logger.error(f"Failed to get giveaway winners {giveaway_id}: {e}")
+            return []
+
+    def count_user_purchases(self, user_id: int) -> int:
+        try:
+            result = self.execute(
+                "SELECT COUNT(*) as count FROM purchase_history WHERE user_id = ?",
+                (user_id,),
+                fetch=True,
+            )
+            if not result:
+                return 0
+            return result[0]['count'] if self.use_postgres else result[0][0]
+        except Exception:
+            return 0
+
+    def draw_giveaway_winners(self, giveaway_id: int, winners_count: int) -> List[dict]:
+        entries = self.get_giveaway_entries(giveaway_id)
+        if not entries:
+            self.update_giveaway(giveaway_id, status='completed', completed_at=datetime.now().isoformat(), winner_ids='[]')
+            return []
+
+        shuffled = list(entries)
+        random.shuffle(shuffled)
+        winners = shuffled[:max(1, winners_count)]
+        winner_ids = [int(item['user_id']) for item in winners]
+
+        try:
+            placeholders = ",".join(["?"] * len(winner_ids))
+            self.execute(
+                f"UPDATE giveaway_entries SET is_winner = 1 WHERE giveaway_id = ? AND user_id IN ({placeholders})",
+                tuple([giveaway_id] + winner_ids),
+                commit=True,
+            )
+            self.update_giveaway(
+                giveaway_id,
+                status='completed',
+                completed_at=datetime.now().isoformat(),
+                winner_ids=json.dumps(winner_ids),
+            )
+        except Exception as e:
+            logger.error(f"Failed to mark giveaway winners {giveaway_id}: {e}")
+        return winners
+
+    def mark_giveaway_prize_awarded(self, giveaway_id: int, user_id: int) -> bool:
+        try:
+            self.execute(
+                """UPDATE giveaway_entries
+                   SET prize_awarded = 1, prize_awarded_at = ?
+                   WHERE giveaway_id = ? AND user_id = ?""",
+                (datetime.now().isoformat(), giveaway_id, user_id),
+                commit=True,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to mark giveaway prize awarded: {e}")
+            return False
+
+    def award_giveaway_balance(self, user_id: int, amount: float, giveaway_id: int) -> bool:
+        try:
+            self.add_balance(user_id, amount)
+            self.add_transaction(
+                user_id=user_id,
+                amount=amount,
+                type_='giveaway_balance',
+                status='completed',
+                metadata={'giveaway_id': giveaway_id},
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to award giveaway balance: {e}")
+            return False
+
+    def award_giveaway_product(self, user_id: int, product_id: int, giveaway_id: int) -> Tuple[bool, Optional[dict]]:
+        try:
+            rows = self.execute("SELECT * FROM products WHERE id = ?", (product_id,), fetch=True)
+            if not rows:
+                return False, None
+
+            product = dict(rows[0])
+            stock = product.get('stock', -1)
+            if stock == 0:
+                return False, product
+
+            self.execute("BEGIN TRANSACTION")
+            if stock > 0:
+                self.execute(
+                    "UPDATE products SET stock = stock - 1, sold_count = sold_count + 1 WHERE id = ?",
+                    (product_id,),
+                    commit=False,
+                )
+            else:
+                self.execute(
+                    "UPDATE products SET sold_count = sold_count + 1 WHERE id = ?",
+                    (product_id,),
+                    commit=False,
+                )
+
+            now = datetime.now().isoformat()
+            self.execute(
+                """INSERT INTO transactions
+                   (user_id, amount, type, product_id, status, completed_at, currency, metadata)
+                   VALUES (?, 0, 'giveaway_product', ?, 'completed', ?, 'USD', ?)""",
+                (user_id, product_id, now, json.dumps({'giveaway_id': giveaway_id})),
+                commit=False,
+            )
+            self.execute(
+                """INSERT INTO purchase_history
+                   (user_id, product_id, product_name, amount, status, purchase_date, completed_date)
+                   VALUES (?, ?, ?, 0, 'completed', ?, ?)""",
+                (user_id, product_id, f"{product.get('name', 'Prize')} (Giveaway)", now, now),
+                commit=False,
+            )
+            self.conn.commit()
+            self.invalidate_product_cache(product_id)
+            return True, product
+        except Exception as e:
+            try:
+                self.conn.rollback()
+            except Exception:
+                pass
+            logger.error(f"Failed to award giveaway product: {e}")
+            return False, None
 
     def admin_add_balance(self, user_id, amount, reason=""):
         now = datetime.now().isoformat()

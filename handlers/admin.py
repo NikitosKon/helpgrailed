@@ -54,6 +54,7 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
         keyboard = [
             [InlineKeyboardButton("📊 Статистика", callback_data='admin_stats')],
             [InlineKeyboardButton("📦 Управление товарами", callback_data='admin_products')],
+            [InlineKeyboardButton("🎁 Розыгрыши", callback_data='admin_giveaways')],
             [InlineKeyboardButton("📬 Заказы", callback_data='admin_orders')],
             [InlineKeyboardButton("🏠 Главная страница", callback_data='admin_home_menu')],
             [InlineKeyboardButton("🔘 Главное меню", callback_data='admin_menu_editor')],
@@ -245,6 +246,10 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
     elif data == 'admin_promo_menu':
         from handlers.admin_promo import admin_promo_menu
         await admin_promo_menu(update, context)
+
+    elif data.startswith('admin_giveaway'):
+        from handlers.giveaways import handle_admin_giveaway_callback
+        await handle_admin_giveaway_callback(update, context, data)
 
     elif data == 'admin_create_promo':
         from handlers.admin_promo import admin_create_promo_start

@@ -26,6 +26,7 @@ from handlers.commands import (
     check_categories_command,
     force_add_categories,
 )
+from handlers.giveaways import process_due_giveaways
 
 
 logging.basicConfig(
@@ -205,6 +206,11 @@ async def post_init(application: Application):
         check_pending_payments,
         interval=60,
         first=10
+    )
+    application.job_queue.run_repeating(
+        process_due_giveaways,
+        interval=60,
+        first=15
     )
     logger.info("Bot initialized successfully")
 

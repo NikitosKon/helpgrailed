@@ -52,6 +52,9 @@ def main_menu(user_id):
         [InlineKeyboardButton(support_label, url='https://t.me/helpgrailed')],
     ]
 
+    if db.has_public_giveaways():
+        keyboard.insert(4, [InlineKeyboardButton("🎁 Розыгрыши", callback_data='giveaways')])
+
     for button in db.get_custom_menu_buttons():
         if not button.get('enabled', True):
             continue

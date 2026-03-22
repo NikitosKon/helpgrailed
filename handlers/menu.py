@@ -23,6 +23,14 @@ from handlers.profile import handle_profile, handle_referral, handle_referral_de
 from handlers.faq import handle_faq, handle_faq_item
 from handlers.language import language_command
 from handlers.legal import handle_terms, handle_terms_accept
+from handlers.giveaways import (
+    handle_giveaways,
+    handle_giveaway_view,
+    handle_giveaway_join,
+    handle_giveaway_participants,
+    process_admin_giveaway_input,
+    handle_admin_giveaway_photo_input,
+)
 from handlers.admin import (
     handle_admin,
     handle_admin_add_product_input,
@@ -187,6 +195,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await query.edit_message_text("Некорректное подтверждение правил")
     elif data.startswith('faq_'):
         await handle_faq_item(update, context, data.replace('faq_', '', 1))
+    elif data == 'giveaways':
+        await handle_giveaways(update, context)
+    elif data.startswith('giveaway_join_'):
+        await handle_giveaway_join(update, context, int(data.replace('giveaway_join_', '', 1)))
+    elif data.startswith('giveaway_participants_'):
+        await handle_giveaway_participants(update, context, int(data.replace('giveaway_participants_', '', 1)))
+    elif data.startswith('giveaway_'):
+        await handle_giveaway_view(update, context, int(data.replace('giveaway_', '', 1)))
 
     # Админ-панель (все что связано с админкой, включая рассылки)
     elif (data.startswith('admin') or 
@@ -246,8 +262,10 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             action == 'admin_add_product_photo_waiting'
             or action == 'admin_add_category_photo'
             or action == 'admin_home_photo'
+            or action == 'admin_giveaway_create_photo'
             or action.startswith('admin_menu_core_photo_')
             or action == 'broadcast_photo'
+            or action.startswith('admin_giveaway_edit_photo_')
             or action.startswith('admin_edit_category_photo_')
             or action.startswith('admin_edit_subcategory_') and action.endswith('_photo')
             or (action.startswith('admin_edit_') and action.endswith('_photo_waiting'))
@@ -260,6 +278,8 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             elif action == 'broadcast_photo':
                 from handlers.admin_broadcast import handle_broadcast_photo_input
                 await handle_broadcast_photo_input(update, context)
+            elif action == 'admin_giveaway_create_photo' or action.startswith('admin_giveaway_edit_photo_'):
+                await handle_admin_giveaway_photo_input(update, context)
             else:
                 await handle_admin_photo_input(update, context)
         else:
@@ -393,6 +413,10 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         logger.info(f"📢 Вызов process_admin_create_promo с action={action}")
         from handlers.admin_promo import process_admin_create_promo
         await process_admin_create_promo(update, context, text)
+        return
+
+    if action.startswith('admin_giveaway_'):
+        await process_admin_giveaway_input(update, context, action, text)
         return
 
     # Добавление нового администратора
