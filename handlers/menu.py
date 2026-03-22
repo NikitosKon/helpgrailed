@@ -49,7 +49,6 @@ last_action_time = {}
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик callback-запросов (кнопок)"""
     query = update.callback_query
-    await query.answer()
 
     user = query.from_user
     data = query.data
@@ -240,6 +239,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             )
         
         await query.answer()
+
+    else:
+        try:
+            await query.answer()
+        except Exception:
+            pass
 
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -147,10 +147,21 @@ def _stock_str(stock: int) -> str:
     return '∞' if stock < 0 else str(stock)
 
 
+def _compact_button_name(name: str, limit: int = 34) -> str:
+    clean = re.sub(r'\s+', ' ', (name or '').strip())
+    if len(clean) <= limit:
+        return clean
+    return clean[: limit - 1].rstrip() + '…'
+
+
 def _product_button_text(name: str, price: float, stock: int, user_id: int) -> str:
+    short_name = _compact_button_name(name)
     if price is not None and price < 0:
-        return f"{name} — {get_text('details_button', user_id)}"
-    return f"{name} — ${price:.0f} ({get_text('in_stock', user_id)}: {_stock_str(stock)})"
+        return f"{short_name} — {get_text('details_button', user_id)}"
+    stock_label = _stock_str(stock)
+    if stock < 0:
+        return f"{short_name} — ${price:.0f}"
+    return f"{short_name} — ${price:.0f} · {stock_label}"
 
 
 async def handle_services(update: Update, context: ContextTypes.DEFAULT_TYPE):

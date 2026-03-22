@@ -55,6 +55,66 @@ def _prize_label(giveaway: dict) -> str:
     return f"Текст: {prize_value}"
 
 
+def _giveaway_public_text(giveaway: dict, user_id: Optional[int] = None) -> str:
+    giveaway_id = int(giveaway["id"])
+    entries = db.get_giveaway_entries(giveaway_id)
+    entered = db.has_entered_giveaway(giveaway_id, user_id) if user_id else False
+    return (
+        f"🎁 <b>{html.escape(giveaway.get('title') or 'Розыгрыш')}</b>\n\n"
+        f"{html.escape(giveaway.get('description') or '-')}\n\n"
+        f"🏁 До: {_fmt_dt(giveaway.get('ends_at'))}\n"
+        f"🏆 Победителей: {giveaway.get('winners_count', 1)}\n"
+        f"🎁 Приз: {_prize_label(giveaway)}\n"
+        f"👥 Участников: {len(entries)}\n"
+        f"Ваш статус: {'✅ участвуете' if entered else '— не участвуете'}"
+    )
+
+
+def _giveaway_public_keyboard(giveaway: dict, entered: bool = False, back_callback: str = "giveaways") -> InlineKeyboardMarkup:
+    giveaway_id = int(giveaway["id"])
+    keyboard = []
+    if not entered:
+        keyboard.append([InlineKeyboardButton("🎟 Участвовать", callback_data=f"giveaway_join_{giveaway_id}")])
+    if giveaway.get("public_participants"):
+        keyboard.append([InlineKeyboardButton("👥 Список участников", callback_data=f"giveaway_participants_{giveaway_id}")])
+    keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data=back_callback)])
+    return InlineKeyboardMarkup(keyboard)
+
+
+async def _publish_giveaway_preview(
+    context: ContextTypes.DEFAULT_TYPE,
+    giveaway: dict,
+    chat_id: int,
+    *,
+    reply_to_message_id: Optional[int] = None,
+) -> bool:
+    text = _giveaway_public_text(giveaway)
+    reply_markup = _giveaway_public_keyboard(giveaway, entered=False)
+
+    try:
+        if giveaway.get("photo_file_id"):
+            await context.bot.send_photo(
+                chat_id=chat_id,
+                photo=giveaway.get("photo_file_id"),
+                caption=text,
+                parse_mode="HTML",
+                reply_markup=reply_markup,
+                reply_to_message_id=reply_to_message_id,
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=text,
+                parse_mode="HTML",
+                reply_markup=reply_markup,
+                reply_to_message_id=reply_to_message_id,
+            )
+        return True
+    except Exception as e:
+        logger.error(f"Failed to publish giveaway preview {giveaway.get('id')}: {e}")
+        return False
+
+
 def _giveaway_status_label(status: str) -> str:
     return {
         "active": "🟢 Активен",
@@ -436,7 +496,17 @@ async def handle_admin_giveaway_callback(update: Update, context: ContextTypes.D
     if data.startswith("admin_giveaway_toggle_publish_"):
         giveaway_id = int(data.replace("admin_giveaway_toggle_publish_", ""))
         giveaway = db.get_giveaway(giveaway_id) or {}
-        db.update_giveaway(giveaway_id, published=0 if giveaway.get("published") else 1)
+        new_published = 0 if giveaway.get("published") else 1
+        db.update_giveaway(giveaway_id, published=new_published)
+        if new_published:
+            refreshed = db.get_giveaway(giveaway_id)
+            if refreshed:
+                await _publish_giveaway_preview(
+                    context,
+                    refreshed,
+                    query.message.chat_id,
+                    reply_to_message_id=query.message.message_id,
+                )
         await admin_giveaway_view(update, context, giveaway_id)
         return
     if data.startswith("admin_giveaway_edit_"):
@@ -521,6 +591,14 @@ async def handle_admin_giveaway_callback(update: Update, context: ContextTypes.D
         _clear_form(context)
         db.clear_pending_action(user.id)
         if giveaway_id:
+            giveaway = db.get_giveaway(giveaway_id)
+            if giveaway:
+                await _publish_giveaway_preview(
+                    context,
+                    giveaway,
+                    query.message.chat_id,
+                    reply_to_message_id=query.message.message_id,
+                )
             await admin_giveaway_view(update, context, giveaway_id)
         else:
             await _edit_or_send(query, "❌ Не удалось создать розыгрыш.")
@@ -696,28 +774,12 @@ async def handle_giveaway_view(update: Update, context: ContextTypes.DEFAULT_TYP
     if not giveaway or giveaway.get("status") != "active" or not giveaway.get("published"):
         await _edit_or_send(query, "Этот розыгрыш недоступен.")
         return
-    entries = db.get_giveaway_entries(giveaway_id)
     entered = db.has_entered_giveaway(giveaway_id, user.id)
-    text = (
-        f"🎁 <b>{html.escape(giveaway.get('title') or 'Розыгрыш')}</b>\n\n"
-        f"{html.escape(giveaway.get('description') or '-')}\n\n"
-        f"🏁 До: {_fmt_dt(giveaway.get('ends_at'))}\n"
-        f"🏆 Победителей: {giveaway.get('winners_count', 1)}\n"
-        f"🎁 Приз: {_prize_label(giveaway)}\n"
-        f"👥 Участников: {len(entries)}\n"
-        f"Ваш статус: {'✅ участвуете' if entered else '— не участвуете'}"
-    )
-    keyboard = []
-    if not entered:
-        keyboard.append([InlineKeyboardButton("🎟 Участвовать", callback_data=f"giveaway_join_{giveaway_id}")])
-    if giveaway.get("public_participants"):
-        keyboard.append([InlineKeyboardButton("👥 Список участников", callback_data=f"giveaway_participants_{giveaway_id}")])
-    keyboard.append([InlineKeyboardButton(get_text("back", user.id), callback_data="giveaways")])
     await _send_photo_or_text(
         query,
-        text,
+        _giveaway_public_text(giveaway, user.id),
         photo_file_id=giveaway.get("photo_file_id"),
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        reply_markup=_giveaway_public_keyboard(giveaway, entered=entered, back_callback="giveaways"),
         parse_mode="HTML",
     )
 
