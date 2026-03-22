@@ -28,7 +28,7 @@ def _parse_dt(value: str) -> Optional[datetime]:
 
 def _fmt_dt(value: str) -> str:
     dt = _parse_dt(value)
-    return dt.strftime("%d.%m.%Y %H:%M") if dt else (value or "—")
+    return dt.strftime("%d.%m.%Y %H:%M") if dt else (value or "-")
 
 
 def _normalize_channel(value: str) -> Optional[str]:
@@ -45,7 +45,7 @@ def _normalize_channel(value: str) -> Optional[str]:
 
 def _prize_label(giveaway: dict) -> str:
     prize_type = giveaway.get("prize_type")
-    prize_value = giveaway.get("prize_value") or "—"
+    prize_value = giveaway.get("prize_value") or "-"
     if prize_type == "balance":
         return f"Баланс: ${float(prize_value):.2f}" if str(prize_value).replace(".", "", 1).isdigit() else f"Баланс: {prize_value}"
     if prize_type == "product":
@@ -66,7 +66,7 @@ def _giveaway_public_text(giveaway: dict, user_id: Optional[int] = None) -> str:
         f"🏆 Победителей: {giveaway.get('winners_count', 1)}\n"
         f"🎁 Приз: {_prize_label(giveaway)}\n"
         f"👥 Участников: {len(entries)}\n"
-        f"Ваш статус: {'✅ участвуете' if entered else '— не участвуете'}"
+        f"Ваш статус: {'✅ участвуете' if entered else '- не участвуете'}"
     )
 
 

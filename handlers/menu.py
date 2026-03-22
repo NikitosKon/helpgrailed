@@ -298,7 +298,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     pending = db.get_pending_action(user.id)
     if not pending:
-        logger.debug("Нет pending action — игнорируем сообщение")
+        logger.debug("Нет pending action - игнорируем сообщение")
         return
 
     action, _ = pending
@@ -315,7 +315,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await handle_broadcast_draft_title(update, context, text)
         return
 
-    # Депозит — кастомная сумма
+    # Депозит - кастомная сумма
     if action.startswith('deposit_custom_'):
         await handle_custom_deposit(update, context, text)
         return
@@ -479,7 +479,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await handle_admin_edit_subcategory_input(update, context, action, text)
         return
 
-    # Добавление товара — шаги wizard
+    # Добавление товара - шаги wizard
     add_product_actions = {
         'admin_add_product_name',
         'admin_add_product_category',
@@ -500,7 +500,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await handle_admin_edit_product_input(update, context, action, text)
         return
 
-    # Если дошли сюда — неизвестное состояние
+    # Если дошли сюда - неизвестное состояние
     logger.warning(f"Неизвестное или необрабатываемое состояние: {action}")
     db.clear_pending_action(user.id)
     await message.reply_text("Состояние сброшено. Начните заново.")

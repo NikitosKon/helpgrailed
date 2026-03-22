@@ -152,7 +152,7 @@ async def handle_purchase_history(update: Update, context: ContextTypes.DEFAULT_
         status = item.get('status') or 'completed'
         text += (
             f"• #{item['id']} · {date}\n"
-            f"  {item['product_name']} — ${item['amount']}\n"
+            f"  {item['product_name']} - ${item['amount']}\n"
             f"  {get_text('order_status', user.id)}: {_order_status_text(status, user.id)}\n\n"
         )
     

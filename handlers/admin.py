@@ -800,7 +800,7 @@ async def handle_admin_add_product_input(update: Update, context: ContextTypes.D
             )
 
         except ValueError:
-            await update.message.reply_text("❌ Порядок сортировки — целое число")
+            await update.message.reply_text("❌ Порядок сортировки - целое число")
         except Exception as e:
             logger.exception("Ошибка сохранения товара")
             await update.message.reply_text(f"❌ Ошибка: {str(e)}")
@@ -1060,7 +1060,7 @@ def _build_product_edit_text(product_id: int, prod) -> str:
 def _format_choice_list(options: dict[str, str]) -> str:
     if not options:
         return "нет"
-    return "\n".join(f"• <code>{html.escape(key)}</code> — {html.escape(value or '-')}" for key, value in options.items())
+    return "\n".join(f"• <code>{html.escape(key)}</code> - {html.escape(value or '-')}" for key, value in options.items())
 
 
 def _draft_status_label(is_active: int | None) -> str:
@@ -1526,9 +1526,9 @@ async def admin_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         text += "<b>Список пользователей:</b>\n\n"
         for user in normalized_users[:50]:
-            username = f"@{user['username']}" if user.get('username') else '—'
-            reg_date = str(user.get('registered_date') or '—')[:19]
-            last_active = str(user.get('last_active') or '—')[:19]
+            username = f"@{user['username']}" if user.get('username') else '-'
+            reg_date = str(user.get('registered_date') or '-')[:19]
+            last_active = str(user.get('last_active') or '-')[:19]
             balance = float(user.get('balance') or 0)
             text += (
                 f"• <code>{user.get('user_id')}</code> | {html.escape(username)}\n"
@@ -1629,7 +1629,7 @@ async def admin_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
             purchase_date = order.get('purchase_date') or '-'
 
         text += (
-            f"• #{order['id']} — {order['product_name']}\n"
+            f"• #{order['id']} - {order['product_name']}\n"
             f"  {_format_order_user(order)} · ${order['amount']}\n"
             f"  {_admin_order_status_label(order.get('status') or 'completed')} · {purchase_date}\n\n"
         )
@@ -1652,13 +1652,13 @@ async def admin_order_details(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     purchase_date = order.get('purchase_date') or '-'
-    completed_date = order.get('completed_date') or '—'
+    completed_date = order.get('completed_date') or '-'
     try:
         purchase_date = datetime.fromisoformat(purchase_date).strftime('%d.%m.%Y %H:%M')
     except Exception:
         pass
     try:
-        completed_date = datetime.fromisoformat(completed_date).strftime('%d.%m.%Y %H:%M') if completed_date != '—' else completed_date
+        completed_date = datetime.fromisoformat(completed_date).strftime('%d.%m.%Y %H:%M') if completed_date != '-' else completed_date
     except Exception:
         pass
 
@@ -1871,9 +1871,9 @@ async def admin_list_subcategories(update: Update, context: ContextTypes.DEFAULT
         parent_name = categories_ru.get(parent, parent)
         status = "✅" if s.get('is_active', 1) else "📝"
         text += f"{status} <b>{s.get('subcat_id')}</b> → <i>{parent_name}</i>\n"
-        text += f"  🇷🇺 {s.get('name_ru') or '—'}\n"
-        text += f"  🇺🇦 {s.get('name_uk') or '—'}\n"
-        text += f"  🇬🇧 {s.get('name_en') or '—'}\n\n"
+        text += f"  🇷🇺 {s.get('name_ru') or '-'}\n"
+        text += f"  🇺🇦 {s.get('name_uk') or '-'}\n"
+        text += f"  🇬🇧 {s.get('name_en') or '-'}\n\n"
 
     keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin_subcategories_menu')]]
     await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
@@ -1900,7 +1900,7 @@ async def admin_sort_subcategories(update: Update, context: ContextTypes.DEFAULT
         if parent_id != current_parent:
             current_parent = parent_id
             parent_name = categories_ru.get(parent_id, parent_id)
-            keyboard.append([InlineKeyboardButton(f"— {parent_name} —", callback_data='noop')])
+            keyboard.append([InlineKeyboardButton(f"- {parent_name} -", callback_data='noop')])
 
         name = subcat.get('name_ru') or subcat.get('subcat_id')
         subcat_id = subcat.get('subcat_id')
@@ -2064,9 +2064,9 @@ async def admin_edit_subcategory_start(update: Update, context: ContextTypes.DEF
         query,
         f"✏️ <b>Редактирование подкатегории {html.escape(subcat_id)}</b>\n\n"
         f"Родитель: <code>{html.escape(subcat.get('parent_cat_id') or '-')}</code> ({html.escape(parent_name or '-')})\n"
-        f"🇷🇺 {html.escape(subcat.get('name_ru') or '—')}\n"
-        f"🇺🇦 {html.escape(subcat.get('name_uk') or '—')}\n"
-        f"🇬🇧 {html.escape(subcat.get('name_en') or '—')}\n"
+        f"🇷🇺 {html.escape(subcat.get('name_ru') or '-')}\n"
+        f"🇺🇦 {html.escape(subcat.get('name_uk') or '-')}\n"
+        f"🇬🇧 {html.escape(subcat.get('name_en') or '-')}\n"
         f"🖼 Фото: {'есть' if subcat.get('photo_url') else 'нет'}\n"
         f"Статус: {_draft_status_label(subcat.get('is_active', 1))}",
         reply_markup=InlineKeyboardMarkup([
@@ -2164,11 +2164,11 @@ async def admin_edit_subcategory_field_start(update: Update, context: ContextTyp
             f"Доступные категории:\n{_format_choice_list(cats)}"
         )
     elif field == 'name_ru':
-        text = f"Введите новое название на русском или /skip.\n\nТекущее: {html.escape(subcat.get('name_ru') or '—')}"
+        text = f"Введите новое название на русском или /skip.\n\nТекущее: {html.escape(subcat.get('name_ru') or '-')}"
     elif field == 'name_uk':
-        text = f"Введите новое название на украинском или /skip.\n\nТекущее: {html.escape(subcat.get('name_uk') or '—')}"
+        text = f"Введите новое название на украинском или /skip.\n\nТекущее: {html.escape(subcat.get('name_uk') or '-')}"
     elif field == 'name_en':
-        text = f"Введите новое название на английском или /skip.\n\nТекущее: {html.escape(subcat.get('name_en') or '—')}"
+        text = f"Введите новое название на английском или /skip.\n\nТекущее: {html.escape(subcat.get('name_en') or '-')}"
     elif field == 'photo':
         text = (
             f"Отправьте фото для подкатегории или /skip.\n\n"
@@ -2276,9 +2276,9 @@ async def admin_list_categories(update: Update, context: ContextTypes.DEFAULT_TY
         cat_id = category.get('cat_id')
         status = "✅" if category.get('is_active', 1) else "📝"
         text += f"{status} <b>{cat_id}</b>\n"
-        text += f"  🇷🇺 {category.get('name_ru', '—')}\n"
-        text += f"  🇺🇦 {category.get('name_uk', '—')}\n"
-        text += f"  🇬🇧 {category.get('name_en', '—')}\n\n"
+        text += f"  🇷🇺 {category.get('name_ru', '-')}\n"
+        text += f"  🇺🇦 {category.get('name_uk', '-')}\n"
+        text += f"  🇬🇧 {category.get('name_en', '-')}\n\n"
     
     keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')]]
     await _edit_or_send(query, 
@@ -2480,9 +2480,9 @@ async def admin_edit_category_start(update: Update, context: ContextTypes.DEFAUL
     await _edit_or_send(
         query,
         f"✏️ <b>Редактирование категории {cat_id}</b>\n\n"
-        f"🇷🇺 {category.get('name_ru') or '—'}\n"
-        f"🇺🇦 {categories_uk.get(cat_id) or category.get('name_uk') or '—'}\n"
-        f"🇬🇧 {categories_en.get(cat_id) or category.get('name_en') or '—'}\n"
+        f"🇷🇺 {category.get('name_ru') or '-'}\n"
+        f"🇺🇦 {categories_uk.get(cat_id) or category.get('name_uk') or '-'}\n"
+        f"🇬🇧 {categories_en.get(cat_id) or category.get('name_en') or '-'}\n"
         f"Статус: {status}\n"
         f"🖼 Фото: {photo_state}",
         reply_markup=InlineKeyboardMarkup([
@@ -2514,7 +2514,7 @@ async def admin_edit_category_text_start(update: Update, context: ContextTypes.D
     await _edit_or_send(
         query,
         f"✏️ <b>Редактирование названий категории {cat_id}</b>\n\n"
-        f"Текущее русское название: {category.get('name_ru') or '—'}\n\n"
+        f"Текущее русское название: {category.get('name_ru') or '-'}\n\n"
         f"Введите новое название на русском (или /skip для пропуска):",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data=f'admin_edit_cat_{cat_id}')]]),
         parse_mode='HTML'
@@ -3170,7 +3170,7 @@ async def admin_home_edit_text_lang_start(update: Update, context: ContextTypes.
         query,
         "📝 <b>Редактирование текста главной страницы</b>\n\n"
         f"Язык: <b>{lang.upper()}</b>\n\n"
-        f"Текущее значение:\n<code>{html.escape(current_text[:800] or '—')}</code>\n\n"
+        f"Текущее значение:\n<code>{html.escape(current_text[:800] or '-')}</code>\n\n"
         f"Введите новый текст на {lang_label}.\n"
         "Можно использовать <code>{name}</code> для имени пользователя.\n"
         "Или отправьте /skip, чтобы оставить текущий.",
