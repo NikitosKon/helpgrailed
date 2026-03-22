@@ -57,23 +57,26 @@ async def _edit_or_send_with_core_photo(query, text, core_key: str, reply_markup
 
 async def _send_photo_or_text(query, text, photo_source=None, reply_markup=None, parse_mode=None, **kwargs):
     if photo_source:
-        try:
-            await query.message.delete()
-        except Exception:
-            pass
-
         if os.path.exists(photo_source):
             with open(photo_source, 'rb') as photo_file:
-                return await query.get_bot().send_photo(
-                    chat_id=query.message.chat_id,
-                    photo=photo_file,
-                    caption=text,
-                    reply_markup=reply_markup,
-                    parse_mode=parse_mode,
-                    **kwargs
-                )
+                try:
+                    sent = await query.get_bot().send_photo(
+                        chat_id=query.message.chat_id,
+                        photo=photo_file,
+                        caption=text,
+                        reply_markup=reply_markup,
+                        parse_mode=parse_mode,
+                        **kwargs
+                    )
+                    try:
+                        await query.message.delete()
+                    except Exception:
+                        pass
+                    return sent
+                except Exception:
+                    pass
         try:
-            return await query.get_bot().send_photo(
+            sent = await query.get_bot().send_photo(
                 chat_id=query.message.chat_id,
                 photo=photo_source,
                 caption=text,
@@ -81,6 +84,11 @@ async def _send_photo_or_text(query, text, photo_source=None, reply_markup=None,
                 parse_mode=parse_mode,
                 **kwargs
             )
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+            return sent
         except Exception:
             pass
 
@@ -327,18 +335,19 @@ async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
     keyboard.append([InlineKeyboardButton(get_text('main_menu', user.id), callback_data='menu')])
 
     if photo_url and os.path.exists(photo_url):
-        try:
-            await query.message.delete()
-        except Exception:
-            pass
         with open(photo_url, 'rb') as photo_file:
-            await query.get_bot().send_photo(
+            sent = await query.get_bot().send_photo(
                 chat_id=query.message.chat_id,
                 photo=photo_file,
                 caption=text,
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='HTML'
             )
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        return sent
     else:
         await _edit_or_send(
             query,
