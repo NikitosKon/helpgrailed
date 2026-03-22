@@ -169,6 +169,8 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
         await admin_toggle_subcategory_status(update, context, data.replace('admin_subcat_toggle_', '', 1))
     elif data.startswith('admin_subcat_duplicate_'):
         await admin_duplicate_subcategory(update, context, data.replace('admin_subcat_duplicate_', '', 1))
+    elif data.startswith('admin_subcat_photo_remove_'):
+        await admin_remove_subcategory_photo(update, context, data.replace('admin_subcat_photo_remove_', '', 1))
     elif data.startswith('admin_edit_subcat_'):
         subcat_id = data[len('admin_edit_subcat_'):]
         await admin_edit_subcategory_start(update, context, subcat_id)
@@ -1684,12 +1686,15 @@ async def admin_edit_subcategory_start(update: Update, context: ContextTypes.DEF
         f"🇷🇺 {html.escape(subcat.get('name_ru') or '—')}\n"
         f"🇺🇦 {html.escape(subcat.get('name_uk') or '—')}\n"
         f"🇬🇧 {html.escape(subcat.get('name_en') or '—')}\n"
+        f"🖼 Фото: {'есть' if subcat.get('photo_url') else 'нет'}\n"
         f"Статус: {_draft_status_label(subcat.get('is_active', 1))}",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("📂 Родительская категория", callback_data=f"admin_subcat_field_{subcat_id}_parent")],
             [InlineKeyboardButton("🇷🇺 RU", callback_data=f"admin_subcat_field_{subcat_id}_name_ru")],
             [InlineKeyboardButton("🇺🇦 UK", callback_data=f"admin_subcat_field_{subcat_id}_name_uk")],
             [InlineKeyboardButton("🇬🇧 EN", callback_data=f"admin_subcat_field_{subcat_id}_name_en")],
+            [InlineKeyboardButton("🖼 Фото", callback_data=f"admin_subcat_field_{subcat_id}_photo")],
+            [InlineKeyboardButton("🗑 Удалить фото", callback_data=f"admin_subcat_photo_remove_{subcat_id}")],
             [InlineKeyboardButton(toggle_label, callback_data=f"admin_subcat_toggle_{subcat_id}")],
             [InlineKeyboardButton("📄 Дублировать", callback_data=f"admin_subcat_duplicate_{subcat_id}")],
             [InlineKeyboardButton("◀️ Назад", callback_data='admin_edit_subcategory')],
@@ -1704,7 +1709,7 @@ async def handle_admin_edit_subcategory_input(update: Update, context: ContextTy
     payload = action.replace('admin_edit_subcategory_', '', 1)
     field = None
     subcat_id = None
-    for candidate in ('parent', 'name_ru', 'name_uk', 'name_en'):
+    for candidate in ('parent', 'name_ru', 'name_uk', 'name_en', 'photo'):
         suffix = f"_{candidate}"
         if payload.endswith(suffix):
             subcat_id = payload[:-len(suffix)]
@@ -1743,6 +1748,9 @@ async def handle_admin_edit_subcategory_input(update: Update, context: ContextTy
         updates['name_uk'] = value
     elif field == 'name_en':
         updates['name_en'] = value
+    elif field == 'photo':
+        await update.message.reply_text("❌ Отправьте фото подкатегории или /skip.")
+        return
     else:
         db.clear_pending_action(user.id)
         return
@@ -1780,6 +1788,11 @@ async def admin_edit_subcategory_field_start(update: Update, context: ContextTyp
         text = f"Введите новое название на украинском или /skip.\n\nТекущее: {html.escape(subcat.get('name_uk') or '—')}"
     elif field == 'name_en':
         text = f"Введите новое название на английском или /skip.\n\nТекущее: {html.escape(subcat.get('name_en') or '—')}"
+    elif field == 'photo':
+        text = (
+            f"Отправьте фото для подкатегории или /skip.\n\n"
+            f"Сейчас фото: {'есть' if subcat.get('photo_url') else 'нет'}"
+        )
     else:
         await query.answer("Неизвестное поле", show_alert=True)
         return
@@ -1816,6 +1829,21 @@ async def admin_duplicate_subcategory(update: Update, context: ContextTypes.DEFA
 
     await query.answer("Создан дубликат подкатегории в черновиках", show_alert=False)
     await admin_edit_subcategory_start(update, context, new_subcat_id)
+
+
+async def admin_remove_subcategory_photo(update: Update, context: ContextTypes.DEFAULT_TYPE, subcat_id: str):
+    query = update.callback_query
+    subcat = db.get_subcategory(subcat_id)
+    if not subcat:
+        await _edit_or_send(query, "❌ Подкатегория не найдена")
+        return
+
+    ok = db.update_subcategory(subcat_id, photo_url='', is_active=0)
+    await _edit_or_send(
+        query,
+        "✅ Фото подкатегории удалено и сохранено в черновик!" if ok else "❌ Не удалось удалить фото подкатегории.",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data=f'admin_edit_subcat_{subcat_id}')]])
+    )
 
 
 async def admin_delete_subcategory_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2354,6 +2382,28 @@ async def handle_admin_photo_input(update: Update, context: ContextTypes.DEFAULT
             )
         else:
             await update.message.reply_text("❌ Ошибка при добавлении категории")
+
+        db.clear_pending_action(user.id)
+        context.user_data.clear()
+        return
+
+    if action.startswith('admin_edit_subcategory_') and action.endswith('_photo'):
+        subcat_id = action.replace('admin_edit_subcategory_', '', 1).rsplit('_photo', 1)[0]
+        subcat = db.get_subcategory(subcat_id)
+        if not subcat:
+            await update.message.reply_text("❌ Подкатегория не найдена")
+            db.clear_pending_action(user.id)
+            return
+
+        if db.update_subcategory(subcat_id, photo_url=photo_path, is_active=0):
+            await update.message.reply_text(
+                "✅ Фото подкатегории обновлено и сохранено в черновик!",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("◀️ Назад", callback_data=f'admin_edit_subcat_{subcat_id}')],
+                ])
+            )
+        else:
+            await update.message.reply_text("❌ Ошибка при обновлении фото подкатегории")
 
         db.clear_pending_action(user.id)
         context.user_data.clear()

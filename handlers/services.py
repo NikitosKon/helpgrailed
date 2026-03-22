@@ -215,6 +215,8 @@ async def handle_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE,
         cat_name = categories.get(category, category)
         subcats = db.get_subcategories(category, lang=user_lang)
         sub_name = subcats.get(subcategory, subcategory)
+        subcat_info = db.get_subcategory(subcategory)
+        subcat_photo = subcat_info.get('photo_url') if subcat_info else None
         path_title = cat_name if sub_name == cat_name else f"{cat_name} / {sub_name}"
 
         if not items:
@@ -244,7 +246,12 @@ async def handle_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE,
             keyboard.append([InlineKeyboardButton(btn_text, callback_data=f'prod_{pid}')])
 
         keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data=f'cat_{category}')])
-        await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard))
+        await _send_photo_or_text(
+            query,
+            text,
+            photo_source=subcat_photo,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
     except Exception as e:
         logger.error(f"Error in subcategory {category}/{subcategory}: {e}")
         await _edit_or_send(
