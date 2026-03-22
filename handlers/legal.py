@@ -5,6 +5,47 @@ from database import db
 from keyboards.reply import get_text
 
 
+async def _edit_or_send(query, text, reply_markup=None, parse_mode=None, **kwargs):
+    try:
+        return await query.edit_message_text(
+            text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+            **kwargs
+        )
+    except Exception:
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        return await query.get_bot().send_message(
+            chat_id=query.message.chat_id,
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+            **kwargs
+        )
+
+
+async def _edit_or_send_with_core_photo(query, text, core_key: str, reply_markup=None, parse_mode=None, **kwargs):
+    photo_file_id = (db.get_main_menu_core().get(core_key, {}) or {}).get('photo_file_id')
+    if not photo_file_id:
+        return await _edit_or_send(query, text, reply_markup=reply_markup, parse_mode=parse_mode, **kwargs)
+
+    try:
+        await query.message.delete()
+    except Exception:
+        pass
+    return await query.get_bot().send_photo(
+        chat_id=query.message.chat_id,
+        photo=photo_file_id,
+        caption=text,
+        reply_markup=reply_markup,
+        parse_mode=parse_mode,
+        **kwargs
+    )
+
+
 async def handle_terms(update: Update, context: ContextTypes.DEFAULT_TYPE, back_callback: str = 'menu', agree_callback: str | None = None):
     query = update.callback_query
     user = query.from_user
@@ -18,10 +59,13 @@ async def handle_terms(update: Update, context: ContextTypes.DEFAULT_TYPE, back_
     rows.append([InlineKeyboardButton(get_text('back', user.id), callback_data=back_callback)])
     keyboard = InlineKeyboardMarkup(rows)
 
-    try:
-        await query.edit_message_text(text, reply_markup=keyboard, parse_mode='HTML')
-    except Exception:
-        await query.message.reply_text(text, reply_markup=keyboard, parse_mode='HTML')
+    await _edit_or_send_with_core_photo(
+        query,
+        text,
+        'terms',
+        reply_markup=keyboard,
+        parse_mode='HTML'
+    )
 
 
 async def handle_terms_accept(update: Update, context: ContextTypes.DEFAULT_TYPE, back_callback: str = 'profile'):

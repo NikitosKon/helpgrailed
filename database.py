@@ -1759,6 +1759,8 @@ class Database:
             'referral': {'ru': '🔗 Рефералка', 'uk': '🔗 Рефералка', 'en': '🔗 Referral'},
             'transfer': {'ru': '💸 Перевести средства', 'uk': '💸 Переказати кошти', 'en': '💸 Transfer funds'},
             'promo_code': {'ru': 'Promo code', 'uk': 'Promo code', 'en': 'Promo code'},
+            'faq': {'ru': 'FAQ', 'uk': 'FAQ', 'en': 'FAQ'},
+            'terms': {'ru': 'Rules of Terms', 'uk': 'Rules of Terms', 'en': 'Rules of Terms'},
             'support': {'ru': '🆘 Тех поддержка', 'uk': '🆘 Тех підтримка', 'en': '🆘 Support'},
         }
         data = self.get_setting_json('main_menu_core', default=default) or {}

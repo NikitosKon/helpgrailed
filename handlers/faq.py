@@ -29,6 +29,25 @@ async def _edit_or_send(query, text, reply_markup=None, parse_mode=None, **kwarg
         )
 
 
+async def _edit_or_send_with_core_photo(query, text, core_key: str, reply_markup=None, parse_mode=None, **kwargs):
+    photo_file_id = (db.get_main_menu_core().get(core_key, {}) or {}).get('photo_file_id')
+    if not photo_file_id:
+        return await _edit_or_send(query, text, reply_markup=reply_markup, parse_mode=parse_mode, **kwargs)
+
+    try:
+        await query.message.delete()
+    except Exception:
+        pass
+    return await query.get_bot().send_photo(
+        chat_id=query.message.chat_id,
+        photo=photo_file_id,
+        caption=text,
+        reply_markup=reply_markup,
+        parse_mode=parse_mode,
+        **kwargs
+    )
+
+
 FAQ_TEXTS = {
     'how_order': {
         'ru': (
@@ -149,9 +168,10 @@ async def handle_faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton(_faq_label(key, lang), callback_data=f'faq_{key}')] for key in FAQ_ORDER]
     keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data='menu')])
 
-    await _edit_or_send(
+    await _edit_or_send_with_core_photo(
         query,
         f"<b>{get_text('faq', user.id)}</b>\n\n{get_text('faq_intro', user.id)}",
+        'faq',
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='HTML'
     )
@@ -166,9 +186,10 @@ async def handle_faq_item(update: Update, context: ContextTypes.DEFAULT_TYPE, it
     if not text:
         text = get_text('error', user.id)
 
-    await _edit_or_send(
+    await _edit_or_send_with_core_photo(
         query,
         text,
+        'faq',
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton(get_text('back', user.id), callback_data='faq')]
         ]),

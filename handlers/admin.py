@@ -3149,6 +3149,8 @@ async def admin_menu_core_menu(update: Update, context: ContextTypes.DEFAULT_TYP
         [InlineKeyboardButton("🔗 Referral", callback_data='admin_menu_core_edit_referral')],
         [InlineKeyboardButton("💸 Transfer", callback_data='admin_menu_core_edit_transfer')],
         [InlineKeyboardButton("🎫 Promo code", callback_data='admin_menu_core_edit_promo_code')],
+        [InlineKeyboardButton("❓ FAQ", callback_data='admin_menu_core_edit_faq')],
+        [InlineKeyboardButton("📜 Terms", callback_data='admin_menu_core_edit_terms')],
         [InlineKeyboardButton("🆘 Support", callback_data='admin_menu_core_edit_support')],
         [InlineKeyboardButton("◀️ Назад", callback_data='admin_menu_editor')],
     ]
