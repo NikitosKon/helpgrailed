@@ -284,7 +284,11 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
         await admin_edit_product_category_select(update, context, data.split('|', 1)[1])
 
     elif data.startswith('admin_edit_product_subcat|'):
-        _, cat_id, subcat_id = data.split('|', 2)
+        subcat_id = data.split('|', 1)[1]
+        cat_id = context.user_data.get('admin_edit_product_cat')
+        if not cat_id:
+            await admin_edit_product_list(update, context)
+            return
         await admin_edit_product_pick_list(
             update,
             context,
@@ -294,12 +298,17 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
         )
 
     elif data.startswith('admin_edit_product_page|'):
-        _, cat_id, subcat_id, page_str = data.split('|', 3)
+        page_str = data.split('|', 1)[1]
+        cat_id = context.user_data.get('admin_edit_product_cat')
+        subcat_id = context.user_data.get('admin_edit_product_subcat')
+        if not cat_id:
+            await admin_edit_product_list(update, context)
+            return
         await admin_edit_product_pick_list(
             update,
             context,
             cat_id,
-            None if subcat_id == '__none__' else ('__all__' if subcat_id == '__all__' else subcat_id),
+            subcat_id,
             page=max(0, int(page_str))
         )
 
@@ -334,7 +343,11 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
         await admin_delete_product_category_select(update, context, data.split('|', 1)[1])
 
     elif data.startswith('admin_delete_product_subcat|'):
-        _, cat_id, subcat_id = data.split('|', 2)
+        subcat_id = data.split('|', 1)[1]
+        cat_id = context.user_data.get('admin_delete_product_cat')
+        if not cat_id:
+            await admin_delete_product_list(update, context)
+            return
         await admin_delete_product_pick_list(
             update,
             context,
@@ -344,12 +357,17 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
         )
 
     elif data.startswith('admin_delete_product_page|'):
-        _, cat_id, subcat_id, page_str = data.split('|', 3)
+        page_str = data.split('|', 1)[1]
+        cat_id = context.user_data.get('admin_delete_product_cat')
+        subcat_id = context.user_data.get('admin_delete_product_subcat')
+        if not cat_id:
+            await admin_delete_product_list(update, context)
+            return
         await admin_delete_product_pick_list(
             update,
             context,
             cat_id,
-            None if subcat_id == '__none__' else ('__all__' if subcat_id == '__all__' else subcat_id),
+            subcat_id,
             page=max(0, int(page_str))
         )
 
@@ -788,19 +806,21 @@ async def admin_edit_product_list(update: Update, context: ContextTypes.DEFAULT_
 
 async def admin_edit_product_category_select(update: Update, context: ContextTypes.DEFAULT_TYPE, cat_id: str):
     query = update.callback_query
+    context.user_data['admin_edit_product_cat'] = cat_id
+    context.user_data.pop('admin_edit_product_subcat', None)
     category = db.get_category(cat_id) or {}
     products = db.get_products(category=cat_id, show_all=True)
     subcategories = db.get_subcategories(cat_id, lang='ru', include_inactive=True)
     keyboard = []
 
     if products:
-        keyboard.append([InlineKeyboardButton("Все товары", callback_data=f'admin_edit_product_subcat|{cat_id}|__all__')])
+        keyboard.append([InlineKeyboardButton("Все товары", callback_data='admin_edit_product_subcat|__all__')])
 
     if any(not (prod.get('subcategory') if isinstance(prod, dict) else None) for prod in products):
-        keyboard.append([InlineKeyboardButton("Без подкатегории", callback_data=f'admin_edit_product_subcat|{cat_id}|__none__')])
+        keyboard.append([InlineKeyboardButton("Без подкатегории", callback_data='admin_edit_product_subcat|__none__')])
 
     for subcat_id, subcat_name in subcategories.items():
-        keyboard.append([InlineKeyboardButton(subcat_name, callback_data=f'admin_edit_product_subcat|{cat_id}|{subcat_id}')])
+        keyboard.append([InlineKeyboardButton(subcat_name, callback_data=f'admin_edit_product_subcat|{subcat_id}')])
 
     if not keyboard:
         await admin_edit_product_pick_list(update, context, cat_id, None, page=0)
@@ -824,6 +844,8 @@ async def admin_edit_product_pick_list(
     page: int = 0
 ):
     query = update.callback_query
+    context.user_data['admin_edit_product_cat'] = cat_id
+    context.user_data['admin_edit_product_subcat'] = subcat_id
     per_page = 12
     products = db.get_products(category=cat_id, show_all=True)
     filtered = []
@@ -868,11 +890,10 @@ async def admin_edit_product_pick_list(
         keyboard.append([InlineKeyboardButton(f"{status} {name}", callback_data=f'admin_edit_{pid}')])
 
     nav = []
-    subcat_token = subcat_id if subcat_id is not None else '__none__'
     if page > 0:
-        nav.append(InlineKeyboardButton("◀️", callback_data=f'admin_edit_product_page|{cat_id}|{subcat_token}|{page - 1}'))
+        nav.append(InlineKeyboardButton("◀️", callback_data=f'admin_edit_product_page|{page - 1}'))
     if page < total_pages - 1:
-        nav.append(InlineKeyboardButton("▶️", callback_data=f'admin_edit_product_page|{cat_id}|{subcat_token}|{page + 1}'))
+        nav.append(InlineKeyboardButton("▶️", callback_data=f'admin_edit_product_page|{page + 1}'))
     if nav:
         keyboard.append(nav)
 
@@ -1189,19 +1210,21 @@ async def admin_delete_product_list(update: Update, context: ContextTypes.DEFAUL
 
 async def admin_delete_product_category_select(update: Update, context: ContextTypes.DEFAULT_TYPE, cat_id: str):
     query = update.callback_query
+    context.user_data['admin_delete_product_cat'] = cat_id
+    context.user_data.pop('admin_delete_product_subcat', None)
     category = db.get_category(cat_id) or {}
     products = db.get_products(category=cat_id, show_all=True)
     subcategories = db.get_subcategories(cat_id, lang='ru', include_inactive=True)
     keyboard = []
 
     if products:
-        keyboard.append([InlineKeyboardButton("Все товары", callback_data=f'admin_delete_product_subcat|{cat_id}|__all__')])
+        keyboard.append([InlineKeyboardButton("Все товары", callback_data='admin_delete_product_subcat|__all__')])
 
     if any(not (prod.get('subcategory') if isinstance(prod, dict) else None) for prod in products):
-        keyboard.append([InlineKeyboardButton("Без подкатегории", callback_data=f'admin_delete_product_subcat|{cat_id}|__none__')])
+        keyboard.append([InlineKeyboardButton("Без подкатегории", callback_data='admin_delete_product_subcat|__none__')])
 
     for subcat_id, subcat_name in subcategories.items():
-        keyboard.append([InlineKeyboardButton(subcat_name, callback_data=f'admin_delete_product_subcat|{cat_id}|{subcat_id}')])
+        keyboard.append([InlineKeyboardButton(subcat_name, callback_data=f'admin_delete_product_subcat|{subcat_id}')])
 
     if not keyboard:
         await admin_delete_product_pick_list(update, context, cat_id, None, page=0)
@@ -1225,6 +1248,8 @@ async def admin_delete_product_pick_list(
     page: int = 0
 ):
     query = update.callback_query
+    context.user_data['admin_delete_product_cat'] = cat_id
+    context.user_data['admin_delete_product_subcat'] = subcat_id
     per_page = 12
     products = db.get_products(category=cat_id, show_all=True)
     filtered = []
@@ -1269,11 +1294,10 @@ async def admin_delete_product_pick_list(
         keyboard.append([InlineKeyboardButton(f"❌ {status} {name}", callback_data=f'admin_delete_{pid}')])
 
     nav = []
-    subcat_token = subcat_id if subcat_id is not None else '__none__'
     if page > 0:
-        nav.append(InlineKeyboardButton("◀️", callback_data=f'admin_delete_product_page|{cat_id}|{subcat_token}|{page - 1}'))
+        nav.append(InlineKeyboardButton("◀️", callback_data=f'admin_delete_product_page|{page - 1}'))
     if page < total_pages - 1:
-        nav.append(InlineKeyboardButton("▶️", callback_data=f'admin_delete_product_page|{cat_id}|{subcat_token}|{page + 1}'))
+        nav.append(InlineKeyboardButton("▶️", callback_data=f'admin_delete_product_page|{page + 1}'))
     if nav:
         keyboard.append(nav)
 
