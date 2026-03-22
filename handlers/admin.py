@@ -324,6 +324,22 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
             await admin_edit_product_field_start(update, context, int(pid_str), field)
         except ValueError:
             await query.answer("Некорректный ID товара", show_alert=True)
+    elif data.startswith('admin_move_product_cat|'):
+        _, payload = data.split('|', 1)
+        pid_str, cat_id = payload.split('|', 1)
+        await admin_move_product_category_select(update, context, int(pid_str), cat_id)
+    elif data.startswith('admin_move_product_subcat|'):
+        _, payload = data.split('|', 1)
+        pid_str, cat_id, subcat_id = payload.split('|', 2)
+        await admin_move_product_to_subcategory(
+            update,
+            context,
+            int(pid_str),
+            cat_id,
+            None if subcat_id == '__none__' else subcat_id,
+        )
+    elif data.startswith('admin_move_product_'):
+        await admin_move_product_start(update, context, int(data.replace('admin_move_product_', '')))
     elif data.startswith('admin_edit_product_photo_remove_'):
         await admin_remove_product_photo(update, context, int(data.replace('admin_edit_product_photo_remove_', '')))
 
@@ -998,6 +1014,9 @@ def _build_product_edit_keyboard(product_id: int):
             InlineKeyboardButton("🗑 Удалить фото", callback_data=f'admin_edit_product_photo_remove_{product_id}'),
         ],
         [
+            InlineKeyboardButton("📦 Переместить в подраздел", callback_data=f'admin_move_product_{product_id}'),
+        ],
+        [
             InlineKeyboardButton(multi_label, callback_data=f'admin_product_multibuy_{product_id}'),
         ],
         [
@@ -1153,6 +1172,92 @@ async def admin_edit_product_field_start(update: Update, context: ContextTypes.D
         ]),
         parse_mode='HTML'
     )
+
+
+async def admin_move_product_start(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int):
+    query = update.callback_query
+    prod = db.get_product(product_id)
+    if not prod:
+        await _edit_or_send(query, "❌ Товар не найден")
+        return
+
+    current = _get_product_edit_current(prod)
+    categories = db.get_categories('ru', include_inactive=True)
+    keyboard = [
+        [InlineKeyboardButton(name, callback_data=f'admin_move_product_cat|{product_id}|{cat_id}')]
+        for cat_id, name in categories.items()
+    ]
+    keyboard.append([InlineKeyboardButton("◀️ Назад к товару", callback_data=f'admin_edit_{product_id}')])
+
+    await _edit_or_send(
+        query,
+        "📦 <b>Перемещение товара</b>\n\n"
+        f"Товар: {html.escape(current.get('name') or 'Без названия')}\n"
+        f"Сейчас: <code>{html.escape(current.get('category') or '-')}</code> / "
+        f"<code>{html.escape(current.get('subcategory') or 'без подкатегории')}</code>\n\n"
+        "Выберите новую категорию:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )
+
+
+async def admin_move_product_category_select(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int, cat_id: str):
+    query = update.callback_query
+    prod = db.get_product(product_id)
+    if not prod:
+        await _edit_or_send(query, "❌ Товар не найден")
+        return
+
+    category = db.get_category(cat_id)
+    if not category:
+        await query.answer("Категория не найдена", show_alert=True)
+        return
+
+    subcategories = db.get_subcategories(cat_id, lang='ru', include_inactive=True)
+    keyboard = [[InlineKeyboardButton("Без подкатегории", callback_data=f'admin_move_product_subcat|{product_id}|{cat_id}|__none__')]]
+    for subcat_id, subcat_name in subcategories.items():
+        keyboard.append([InlineKeyboardButton(subcat_name, callback_data=f'admin_move_product_subcat|{product_id}|{cat_id}|{subcat_id}')])
+    keyboard.append([InlineKeyboardButton("◀️ Назад к категориям", callback_data=f'admin_move_product_{product_id}')])
+
+    await _edit_or_send(
+        query,
+        "📁 <b>Выбор подраздела</b>\n\n"
+        f"Категория: <b>{html.escape(category.get('name_ru') or category.get('name') or cat_id)}</b>\n\n"
+        "Куда перенести товар?",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )
+
+
+async def admin_move_product_to_subcategory(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    product_id: int,
+    cat_id: str,
+    subcat_id: str | None,
+):
+    query = update.callback_query
+    prod = db.get_product(product_id)
+    if not prod:
+        await _edit_or_send(query, "❌ Товар не найден")
+        return
+
+    if not db.get_category(cat_id):
+        await query.answer("Категория не найдена", show_alert=True)
+        return
+
+    if subcat_id is not None:
+        subcat = db.get_subcategory(subcat_id)
+        if not subcat or subcat.get('parent_cat_id') != cat_id:
+            await query.answer("Подкатегория не найдена", show_alert=True)
+            return
+
+    ok = db.update_product(product_id, input_lang='auto', category=cat_id, subcategory=subcat_id, is_active=0)
+    if ok:
+        await query.answer("Товар перенесён и сохранён в черновик", show_alert=False)
+        await admin_edit_product_start(update, context, product_id)
+    else:
+        await query.answer("Не удалось перенести товар", show_alert=True)
 
 
 async def admin_toggle_product_status(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int):
