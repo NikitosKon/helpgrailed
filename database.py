@@ -8,7 +8,7 @@ from typing import Optional, List, Dict, Any, Tuple
 import random
 import string
 
-from config import DB_FILE, REFERRAL_BONUS, ADMIN_IDS
+from config import DB_FILE, REFERRAL_BONUS, ADMIN_IDS, TERMS_VERSION
 from utils.translator import build_i18n_triplet
 
 logger = logging.getLogger(__name__)
@@ -111,7 +111,9 @@ class Database:
                     last_active TEXT,
                     is_blocked INTEGER DEFAULT 0,
                     notify_enabled INTEGER DEFAULT 1,
-                    admin_note TEXT
+                    admin_note TEXT,
+                    terms_accepted_at TEXT,
+                    terms_version TEXT
                 )""",
                 """CREATE TABLE IF NOT EXISTS transactions (
                     id SERIAL PRIMARY KEY,
@@ -262,7 +264,9 @@ class Database:
                     last_active TEXT,
                     is_blocked INTEGER DEFAULT 0,
                     notify_enabled INTEGER DEFAULT 1,
-                    admin_note TEXT
+                    admin_note TEXT,
+                    terms_accepted_at TEXT,
+                    terms_version TEXT
                 )""",
                 """CREATE TABLE IF NOT EXISTS transactions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -412,6 +416,8 @@ class Database:
         """Лёгкие миграции для уже существующих БД."""
         try:
             if self.use_postgres:
+                self.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TEXT", commit=True)
+                self.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT", commit=True)
                 self.execute(
                     "ALTER TABLE categories ADD COLUMN IF NOT EXISTS name TEXT",
                     commit=True
@@ -484,6 +490,12 @@ class Database:
                     commit=True
                 )
             else:
+                user_cols = self.execute("PRAGMA table_info(users)", fetch=True) or []
+                user_col_names = {row[1] for row in user_cols}
+                if 'terms_accepted_at' not in user_col_names:
+                    self.execute("ALTER TABLE users ADD COLUMN terms_accepted_at TEXT", commit=True)
+                if 'terms_version' not in user_col_names:
+                    self.execute("ALTER TABLE users ADD COLUMN terms_version TEXT", commit=True)
                 cols = self.execute("PRAGMA table_info(categories)", fetch=True) or []
                 col_names = {row[1] for row in cols}
                 if 'name_ru' not in col_names:
@@ -1705,6 +1717,23 @@ class Database:
         if not remaining:
             return False
         return self.save_admin_ids(remaining)
+
+    def has_accepted_terms(self, user_id: int) -> bool:
+        user = self.get_user(user_id) or {}
+        return bool(user.get('terms_accepted_at')) and user.get('terms_version') == TERMS_VERSION
+
+    def accept_terms(self, user_id: int) -> bool:
+        now = datetime.now().isoformat()
+        try:
+            self.execute(
+                "UPDATE users SET terms_accepted_at = ?, terms_version = ? WHERE user_id = ?",
+                (now, TERMS_VERSION, user_id),
+                commit=True
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to accept terms for user {user_id}: {e}")
+            return False
 
     def get_home_content(self) -> dict:
         data = self.get_setting_json('home_content', default={}) or {}

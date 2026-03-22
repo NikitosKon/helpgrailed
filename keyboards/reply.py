@@ -25,6 +25,8 @@ def main_menu(user_id):
     referral_label = core.get('referral', {}).get(lang) or get_text('referral', user_id)
     transfer_label = core.get('transfer', {}).get(lang) or get_text('transfer_balance', user_id)
     support_label = core.get('support', {}).get(lang) or get_text('support_button', user_id)
+    language_label = get_text('language_button', user_id)
+    terms_label = get_text('terms_button', user_id)
 
     balance_template = core.get('balance', {}).get(lang) or get_text('balance', user_id, balance=balance)
     try:
@@ -42,7 +44,11 @@ def main_menu(user_id):
             InlineKeyboardButton(referral_label, callback_data='referral'),
             InlineKeyboardButton(transfer_label, callback_data='transfer')
         ],
-        [InlineKeyboardButton(get_text('faq', user_id), callback_data='faq')],
+        [
+            InlineKeyboardButton(get_text('faq', user_id), callback_data='faq'),
+            InlineKeyboardButton(language_label, callback_data='language')
+        ],
+        [InlineKeyboardButton(terms_label, callback_data='terms')],
         [InlineKeyboardButton(support_label, url='https://t.me/helpgrailed')],
     ]
 

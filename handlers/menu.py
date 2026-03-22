@@ -21,6 +21,8 @@ from handlers.payments import (
 )
 from handlers.profile import handle_profile, handle_referral, handle_referral_details, handle_purchase_history
 from handlers.faq import handle_faq, handle_faq_item
+from handlers.language import language_command
+from handlers.legal import handle_terms, handle_terms_accept
 from handlers.admin import (
     handle_admin,
     handle_admin_add_product_input,
@@ -150,6 +152,39 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await handle_purchase_history(update, context)
     elif data == 'faq':
         await handle_faq(update, context)
+    elif data == 'language':
+        await language_command(update, context)
+    elif data == 'terms':
+        await handle_terms(update, context)
+    elif data == 'terms_profile':
+        await handle_terms(
+            update,
+            context,
+            back_callback='profile',
+            agree_callback=None if db.has_accepted_terms(user.id) else 'termsaccept_profile'
+        )
+    elif data == 'termsaccept_profile':
+        await handle_terms_accept(update, context, back_callback='profile')
+    elif data.startswith('termsbuy_'):
+        try:
+            _, product_id, quantity = data.split('_', 2)
+            await handle_terms(
+                update,
+                context,
+                back_callback=f'buyqty_{int(product_id)}_{int(quantity)}',
+                agree_callback=f'termsacceptbuy_{int(product_id)}_{int(quantity)}'
+            )
+        except ValueError:
+            await query.edit_message_text("Некорректный экран правил")
+    elif data.startswith('termsacceptbuy_'):
+        try:
+            _, product_id, quantity = data.split('_', 2)
+            if db.accept_terms(user.id):
+                await handle_buy_confirm(update, context, int(product_id), int(quantity))
+            else:
+                await query.edit_message_text("Не удалось сохранить согласие с правилами.")
+        except ValueError:
+            await query.edit_message_text("Некорректное подтверждение правил")
     elif data.startswith('faq_'):
         await handle_faq_item(update, context, data.replace('faq_', '', 1))
 

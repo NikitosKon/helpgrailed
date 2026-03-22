@@ -102,6 +102,9 @@ async def handle_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
             referrals = referrals_result[0][0] or 0
     else:
         referrals = 0
+
+    terms_accepted = db.has_accepted_terms(user.id)
+    terms_status = get_text('terms_status_accepted', user.id) if terms_accepted else get_text('terms_status_pending', user.id)
     
     text = (
         f"👤 <b>{get_text('profile_title', user.id)}</b>\n\n"
@@ -110,11 +113,13 @@ async def handle_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💰 {get_text('balance_title', user.id)}: ${db.get_balance(user.id)}\n"
         f"📦 {get_text('purchases_label', user.id)}: {purchases}\n"
         f"💸 {get_text('total_spent_label', user.id)}: ${total_spent:.2f}\n"
-        f"👥 {get_text('referrals_label', user.id)}: {referrals}"
+        f"👥 {get_text('referrals_label', user.id)}: {referrals}\n"
+        f"📜 {get_text('terms_status_label', user.id)}: {terms_status}"
     )
     
     keyboard = [
         [InlineKeyboardButton(f"📜 {get_text('purchase_history', user.id)}", callback_data='purchase_history')],
+        [InlineKeyboardButton(get_text('terms_button', user.id), callback_data='terms_profile')],
         [InlineKeyboardButton(get_text('back', user.id), callback_data='menu')]
     ]
     

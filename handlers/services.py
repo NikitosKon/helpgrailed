@@ -453,6 +453,10 @@ async def handle_buy_quantity(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return
 
+    if db.has_accepted_terms(user.id):
+        await handle_buy_confirm(update, context, product_id, quantity)
+        return
+
     total_price = product_price * quantity
     confirm_text = (
         f"🧾 <b>Подтверждение покупки</b>\n\n"
@@ -461,10 +465,10 @@ async def handle_buy_quantity(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"💰 Цена за 1 шт: ${product_price:.2f}\n"
         f"💳 Итого: ${total_price:.2f}\n"
         f"📦 В наличии: {_stock_str(product_stock)}\n\n"
-        "Подтвердить покупку?"
+        "Перед оплатой откройте Rules of Terms and Conditions и подтвердите, что вы их прочитали."
     )
     keyboard = [
-        [InlineKeyboardButton("✅ Подтвердить", callback_data=f'buyconfirm_{product_id}_{quantity}')],
+        [InlineKeyboardButton("📜 Rules of Terms", callback_data=f'termsbuy_{product_id}_{quantity}')],
         [InlineKeyboardButton(get_text('back', user.id), callback_data=(f'buy_{product_id}' if allow_multi_quantity else f'prod_{product_id}'))],
         [InlineKeyboardButton(get_text('main_menu', user.id), callback_data='menu')],
     ]
@@ -480,6 +484,18 @@ async def handle_buy_quantity(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def handle_buy_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int, quantity: int):
     query = update.callback_query
     user = query.from_user
+
+    if not db.has_accepted_terms(user.id):
+        await _edit_or_send(
+            query,
+            "❌ Перед покупкой нужно принять Rules of Terms and Conditions.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📜 Rules of Terms", callback_data=f'termsbuy_{product_id}_{quantity}')],
+                [InlineKeyboardButton(get_text('back', user.id), callback_data=f'prod_{product_id}')],
+            ]),
+            parse_mode='HTML'
+        )
+        return
 
     user_data = db.get_user(user.id) or {}
     user_lang = user_data.get('language', 'ru')

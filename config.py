@@ -35,6 +35,7 @@ class Config:
         self.MIN_DEPOSIT = 1.0
         self.MAX_DEPOSIT = 10000.0
         self.ANTI_FLOOD_INTERVAL = 0.6
+        self.TERMS_VERSION = os.getenv('TERMS_VERSION', '2026-03-22')
         
         # Прокси для CryptoPay (если нужны)
         self.PROXY_LIST = []
@@ -182,6 +183,48 @@ class Config:
         }
 
         self.LANGUAGES['ru'].update({
+            'language_button': '🌐 Язык',
+            'terms_button': '📜 Rules of Terms',
+            'terms_title': '📜 Rules of Terms and Conditions',
+            'terms_accept_button': '✅ Я прочитал и согласен',
+            'terms_status_label': 'Rules',
+            'terms_status_accepted': 'приняты',
+            'terms_status_pending': 'не приняты',
+            'terms_accept_success': '✅ Rules of Terms and Conditions приняты.',
+            'terms_text': (
+                "1. Общие положения\n"
+                "Данный сервис предоставляет исключительно информационные и консультационные услуги, связанные с работой онлайн-платформ, включая eBay, PayPal и Grailed.\n"
+                "Сервис не является финансовым учреждением, платёжной системой, обменным сервисом или официальным представителем указанных платформ.\n\n"
+                "2. Характер услуг\n"
+                "Все услуги носят консультационный и информационный характер.\n"
+                "Предоставляемые рекомендации основаны на опыте и не гарантируют конкретный результат.\n\n"
+                "3. Виртуальный баланс и пополнение\n"
+                "Пополнение осуществляется пользователями через сторонние платёжные решения, включая криптовалютные сервисы.\n"
+                "Баланс в сервисе носит виртуальный характер и используется для оплаты услуг внутри бота.\n"
+                "Сервис не хранит средства пользователей как финансовое учреждение и не осуществляет перевод средств третьим лицам от имени пользователя.\n"
+                "Все операции по пополнению и использованию баланса осуществляются пользователями самостоятельно и на их риск.\n"
+                "Комиссии платёжных систем и криптоботов не возвращаются.\n\n"
+                "4. Оплата услуг\n"
+                "Все услуги имеют стоимость в кредитах/балансе бота.\n"
+                "Списание средств производится автоматически при покупке услуги.\n"
+                "Перед списанием пользователь подтверждает согласие с Rules of Terms and Conditions.\n\n"
+                "5. Возвраты и частичное возмещение\n"
+                "Возврат средств возможен только в случаях, прямо указанных в описании конкретной услуги.\n"
+                "При отсутствии положительного результата может предоставляться частичное возмещение в виртуальных кредитах, если это предусмотрено условиями услуги (например, 50% манибек для отдельных консультаций).\n\n"
+                "6. Работа с аккаунтами\n"
+                "Сервис не управляет аккаунтами пользователей и не имеет к ним доступа после передачи.\n"
+                "Пользователь самостоятельно несёт ответственность за безопасность аккаунтов, соблюдение правил платформ и все действия, совершаемые в аккаунтах.\n\n"
+                "7. Ответственность\n"
+                "Пользователь самостоятельно принимает решения и несёт полную ответственность за свои действия.\n"
+                "Сервис не несёт ответственности за блокировки, ограничения, потерю средств или иные действия со стороны платформ или третьих лиц.\n\n"
+                "8. Отсутствие гарантий\n"
+                "Сервис не гарантирует получение прибыли, стабильность работы аккаунтов, отсутствие ограничений или достижение конкретных результатов.\n\n"
+                "9. Ограничения\n"
+                "Сервис не работает с деятельностью, нарушающей правила платформ, включая использование чужих аккаунтов, поддельные документы и другие запрещённые действия.\n\n"
+                "10. Принятие условий\n"
+                "Используя сервис, пополняя баланс и приобретая услуги, пользователь подтверждает, что ознакомлен с настоящими условиями и полностью их принимает.\n"
+                "В случае несогласия с условиями пользователь обязан прекратить использование сервиса."
+            ),
             'profile_title': 'Профиль',
             'username_label': 'Username',
             'not_set': 'нет',
@@ -224,6 +267,41 @@ class Config:
             'no_orders': 'У вас пока нет заказов.',
         })
         self.LANGUAGES['en'].update({
+            'language_button': '🌐 Language',
+            'terms_button': '📜 Rules of Terms',
+            'terms_title': '📜 Rules of Terms and Conditions',
+            'terms_accept_button': '✅ I have read and agree',
+            'terms_status_label': 'Rules',
+            'terms_status_accepted': 'accepted',
+            'terms_status_pending': 'not accepted',
+            'terms_accept_success': '✅ Rules of Terms and Conditions accepted.',
+            'terms_text': (
+                "1. General provisions\n"
+                "This service provides informational and consulting services only, related to online platforms including eBay, PayPal, and Grailed.\n"
+                "The service is not a financial institution, payment system, exchange service, or official representative of these platforms.\n\n"
+                "2. Nature of services\n"
+                "All services are informational and consulting in nature.\n"
+                "Any recommendations are based on experience, are not mandatory to follow, and do not guarantee a result.\n\n"
+                "3. Financial operations\n"
+                "The service does not accept, store, or transfer users' funds.\n"
+                "All financial operations are carried out by users independently and at their own risk.\n\n"
+                "4. Accounts\n"
+                "The service does not manage user accounts and does not retain access to them after transfer.\n"
+                "The user is solely responsible for account safety, compliance with platform rules, and all actions performed through the account.\n\n"
+                "5. Liability\n"
+                "The user independently makes decisions and bears full responsibility for possible risks, losses, or consequences.\n"
+                "The service is not liable for bans, restrictions, loss of funds, or other actions by platforms or third parties.\n\n"
+                "6. No guarantees\n"
+                "The service does not guarantee profit, account stability, absence of restrictions, or achievement of specific results.\n\n"
+                "7. Refunds and partial compensation\n"
+                "Refunds are possible only in cases specified in the terms of a particular service.\n"
+                "If there is no positive result, partial compensation may be provided if this is stated in the service description.\n\n"
+                "8. Restrictions\n"
+                "The service does not work with activities that violate platform rules, including the use of third-party accounts, fake documents, or other prohibited actions.\n\n"
+                "9. Acceptance of terms\n"
+                "By using the service and making a payment, the user confirms that they have read these rules and fully accept them.\n"
+                "If the user disagrees with the terms, they must stop using the service."
+            ),
             'profile_title': 'Profile',
             'username_label': 'Username',
             'not_set': 'not set',
@@ -266,6 +344,41 @@ class Config:
             'no_orders': 'You have no orders yet.',
         })
         self.LANGUAGES['uk'].update({
+            'language_button': '🌐 Мова',
+            'terms_button': '📜 Rules of Terms',
+            'terms_title': '📜 Rules of Terms and Conditions',
+            'terms_accept_button': '✅ Я прочитав і погоджуюсь',
+            'terms_status_label': 'Rules',
+            'terms_status_accepted': 'прийняті',
+            'terms_status_pending': 'не прийняті',
+            'terms_accept_success': '✅ Rules of Terms and Conditions прийняті.',
+            'terms_text': (
+                "1. Загальні положення\n"
+                "Цей сервіс надає виключно інформаційні та консультаційні послуги, пов'язані з роботою онлайн-платформ, включаючи eBay, PayPal та Grailed.\n"
+                "Сервіс не є фінансовою установою, платіжною системою, обмінним сервісом або офіційним представником зазначених платформ.\n\n"
+                "2. Характер послуг\n"
+                "Усі послуги мають консультаційний та інформаційний характер.\n"
+                "Надані рекомендації ґрунтуються на досвіді, не є обов'язковими до виконання та не гарантують результату.\n\n"
+                "3. Фінансові операції\n"
+                "Сервіс не приймає, не зберігає і не переказує кошти користувачів.\n"
+                "Усі фінансові операції здійснюються користувачами самостійно та на власний ризик.\n\n"
+                "4. Робота з акаунтами\n"
+                "Сервіс не керує акаунтами користувачів і не має до них доступу після передачі.\n"
+                "Користувач самостійно відповідає за безпеку акаунта, дотримання правил платформ і всі дії, що здійснюються в акаунті.\n\n"
+                "5. Відповідальність\n"
+                "Користувач самостійно приймає рішення і несе повну відповідальність за можливі ризики, збитки або наслідки.\n"
+                "Сервіс не несе відповідальності за блокування, обмеження, втрату коштів або інші дії з боку платформ чи третіх осіб.\n\n"
+                "6. Відсутність гарантій\n"
+                "Сервіс не гарантує отримання прибутку, стабільність роботи акаунтів, відсутність обмежень або досягнення конкретних результатів.\n\n"
+                "7. Повернення і часткове відшкодування\n"
+                "Повернення можливі лише у випадках, передбачених умовами конкретної послуги.\n"
+                "За відсутності позитивного результату часткове відшкодування може надаватися, якщо це зазначено в описі послуги.\n\n"
+                "8. Обмеження\n"
+                "Сервіс не працює з діяльністю, що порушує правила платформ, включаючи використання чужих акаунтів, підроблені документи та інші заборонені дії.\n\n"
+                "9. Прийняття умов\n"
+                "Використовуючи сервіс і здійснюючи оплату, користувач підтверджує, що ознайомлений з цими правилами та повністю їх приймає.\n"
+                "У разі незгоди з умовами користувач зобов'язаний припинити використання сервісу."
+            ),
             'profile_title': 'Профіль',
             'username_label': 'Username',
             'not_set': 'немає',
@@ -374,6 +487,7 @@ SUPPORT_CONTACT = config.SUPPORT_CONTACT
 DB_FILE = config.DB_FILE
 DATABASE_URL = config.DATABASE_URL
 REFERRAL_BONUS = config.REFERRAL_BONUS
+TERMS_VERSION = config.TERMS_VERSION
 LANGUAGES = config.LANGUAGES
 CRYPTO_CURRENCIES = config.CRYPTO_CURRENCIES
 TOP_CURRENCIES = config.TOP_CURRENCIES
