@@ -334,14 +334,7 @@ class Config:
             return db.get_categories()
         except Exception as e:
             print(f"Error loading categories from DB: {e}")
-            return {
-                'call_services': "♠️ Call services",
-                'ebay_services': "♠️ eBay services",
-                'grailed_services': "♠️ Grailed services",
-                'additional_services': "♠️ Additional services",
-                'paypal_services': "♠️ PayPal services",
-                'support': "🆘 Technical Support",
-            }
+            return {}
     
     def validate(self):
         """Валидация конфигурации"""

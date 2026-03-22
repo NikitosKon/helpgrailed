@@ -151,6 +151,22 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
         await admin_add_subcategory_start(update, context)
     elif data == 'admin_edit_subcategory':
         await admin_edit_subcategory_list(update, context)
+    elif data.startswith('admin_subcat_field_'):
+        payload = data.replace('admin_subcat_field_', '', 1)
+        parsed = False
+        for field in ('parent', 'name_ru', 'name_uk', 'name_en'):
+            suffix = f'_{field}'
+            if payload.endswith(suffix):
+                subcat_id = payload[:-len(suffix)]
+                await admin_edit_subcategory_field_start(update, context, subcat_id, field)
+                parsed = True
+                break
+        if not parsed:
+            await query.answer("Некорректная подкатегория", show_alert=True)
+    elif data.startswith('admin_subcat_toggle_'):
+        await admin_toggle_subcategory_status(update, context, data.replace('admin_subcat_toggle_', '', 1))
+    elif data.startswith('admin_subcat_duplicate_'):
+        await admin_duplicate_subcategory(update, context, data.replace('admin_subcat_duplicate_', '', 1))
     elif data.startswith('admin_edit_subcat_'):
         subcat_id = data[len('admin_edit_subcat_'):]
         await admin_edit_subcategory_start(update, context, subcat_id)
@@ -178,6 +194,10 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
     elif data.startswith('admin_edit_cat_text_'):
         cat_id = data.replace('admin_edit_cat_text_', '', 1)
         await admin_edit_category_text_start(update, context, cat_id)
+    elif data.startswith('admin_category_toggle_'):
+        await admin_toggle_category_status(update, context, data.replace('admin_category_toggle_', '', 1))
+    elif data.startswith('admin_category_duplicate_'):
+        await admin_duplicate_category(update, context, data.replace('admin_category_duplicate_', '', 1))
     elif data.startswith('admin_edit_cat_photo_remove_'):
         cat_id = data.replace('admin_edit_cat_photo_remove_', '', 1)
         await admin_remove_category_photo(update, context, cat_id)
@@ -202,6 +222,21 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
     elif data == 'admin_add_balance':
         from handlers.admin_balance import admin_add_balance_start
         await admin_add_balance_start(update, context)
+    elif data == 'admin_search_user':
+        from handlers.admin_balance import admin_search_user_start
+        await admin_search_user_start(update, context)
+    elif data == 'admin_top_users':
+        from handlers.admin_balance import admin_show_top_users
+        await admin_show_top_users(update, context)
+    elif data.startswith('admin_balance_user_'):
+        from handlers.admin_balance import admin_show_user_card
+        await admin_show_user_card(update, context, int(data.replace('admin_balance_user_', '')))
+    elif data.startswith('admin_balance_credit_'):
+        from handlers.admin_balance import admin_balance_change_start
+        await admin_balance_change_start(update, context, int(data.replace('admin_balance_credit_', '')), 'credit')
+    elif data.startswith('admin_balance_debit_'):
+        from handlers.admin_balance import admin_balance_change_start
+        await admin_balance_change_start(update, context, int(data.replace('admin_balance_debit_', '')), 'debit')
 
     elif data == 'admin_promo_menu':
         from handlers.admin_promo import admin_promo_menu
@@ -248,6 +283,12 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
             await admin_edit_product_field_start(update, context, int(pid_str), field)
         except ValueError:
             await query.answer("Некорректный ID товара", show_alert=True)
+
+    elif data.startswith('admin_product_toggle_'):
+        await admin_toggle_product_status(update, context, int(data.replace('admin_product_toggle_', '')))
+
+    elif data.startswith('admin_product_duplicate_'):
+        await admin_duplicate_product(update, context, int(data.replace('admin_product_duplicate_', '')))
 
     elif data.startswith('admin_edit_') and len(data.split('_')) == 3:
         try:
@@ -683,14 +724,15 @@ async def handle_admin_add_product_input(update: Update, context: ContextTypes.D
                 stock=int(context.user_data['add_prod_stock']),
                 sort_order=sort_order,
                 photo_url=context.user_data.get('add_prod_photo_url'),
-                input_lang=input_lang
+                input_lang=input_lang,
+                is_active=0
             )
 
             db.clear_pending_action(user.id)
             context.user_data.clear()
 
             await update.message.reply_text(
-                "🎉 Товар успешно добавлен!",
+                "🎉 Товар создан в черновиках!",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("Добавить ещё", callback_data="admin_add_product")],
                     [InlineKeyboardButton("К списку товаров", callback_data="admin_list_products")],
@@ -719,11 +761,14 @@ async def admin_edit_product_list(update: Update, context: ContextTypes.DEFAULT_
         if isinstance(prod, dict):
             pid = prod.get('id')
             name = prod.get('name', 'Без названия')
+            is_active = prod.get('is_active', 1)
         else:
             pid = prod[0]
             name = prod[2]
+            is_active = prod[7] if len(prod) > 7 else 1
         
-        keyboard.append([InlineKeyboardButton(f"✏️ {name}", callback_data=f'admin_edit_{pid}')])
+        status = "✅" if is_active else "📝"
+        keyboard.append([InlineKeyboardButton(f"{status} {name}", callback_data=f'admin_edit_{pid}')])
     
     keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_products')])
 
@@ -780,6 +825,9 @@ def _get_product_edit_current(prod):
 
 
 def _build_product_edit_keyboard(product_id: int):
+    product = db.get_product(product_id) or {}
+    is_active = product.get('is_active', 1) if isinstance(product, dict) else 1
+    publish_label = "📤 Опубликовать" if not is_active else "📝 В черновик"
     return [
         [
             InlineKeyboardButton("📝 Название", callback_data=f'admin_edit_product_field_{product_id}_name'),
@@ -798,6 +846,10 @@ def _build_product_edit_keyboard(product_id: int):
             InlineKeyboardButton("🖼 Фото", callback_data=f'admin_edit_product_field_{product_id}_photo'),
         ],
         [
+            InlineKeyboardButton(publish_label, callback_data=f'admin_product_toggle_{product_id}'),
+            InlineKeyboardButton("📄 Дублировать", callback_data=f'admin_product_duplicate_{product_id}'),
+        ],
+        [
             InlineKeyboardButton("📋 К списку товаров", callback_data='admin_edit_product'),
             InlineKeyboardButton("◀️ Назад", callback_data='admin_products'),
         ],
@@ -809,6 +861,7 @@ def _build_product_edit_text(product_id: int, prod) -> str:
     stock_value = current['stock']
     stock_str = '∞' if isinstance(stock_value, int) and stock_value < 0 else str(stock_value)
     photo_str = "есть" if current.get('photo') else "нет"
+    status_str = _draft_status_label(prod.get('is_active', 1) if isinstance(prod, dict) else 1)
     desc = current.get('desc') or 'нет'
     if len(desc) > 200:
         desc = desc[:197] + '...'
@@ -821,6 +874,7 @@ def _build_product_edit_text(product_id: int, prod) -> str:
         f"Цена: ${current.get('price')}\n"
         f"Запас: {stock_str}\n"
         f"Sort order: {current.get('sort', 0)}\n"
+        f"Статус: {status_str}\n"
         f"Фото: {photo_str}\n"
         f"Описание: {html.escape(desc)}\n\n"
         f"Выберите, что хотите изменить:"
@@ -831,6 +885,10 @@ def _format_choice_list(options: dict[str, str]) -> str:
     if not options:
         return "нет"
     return "\n".join(f"• <code>{html.escape(key)}</code> — {html.escape(value or '-')}" for key, value in options.items())
+
+
+def _draft_status_label(is_active: int | None) -> str:
+    return "✅ Опубликовано" if is_active else "📝 Черновик"
 
 
 def _parse_product_edit_action(action: str):
@@ -866,7 +924,7 @@ async def admin_edit_product_field_start(update: Update, context: ContextTypes.D
             "Введите новое название или /skip, чтобы оставить текущее."
         )
     elif field == 'category':
-        categories = db.get_categories('ru')
+        categories = db.get_categories('ru', include_inactive=True)
         text = (
             f"✏️ <b>Категория товара ID {product_id}</b>\n\n"
             f"Текущая категория: <code>{html.escape(current.get('category') or '-')}</code>\n\n"
@@ -938,6 +996,33 @@ async def admin_edit_product_field_start(update: Update, context: ContextTypes.D
         ]),
         parse_mode='HTML'
     )
+
+
+async def admin_toggle_product_status(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int):
+    query = update.callback_query
+    prod = db.get_product(product_id)
+    if not prod:
+        await query.answer("Товар не найден", show_alert=True)
+        return
+
+    new_status = 0 if prod.get('is_active', 1) else 1
+    ok = db.update_product(product_id, is_active=new_status)
+    if ok:
+        await query.answer("Статус товара обновлён", show_alert=False)
+        await admin_edit_product_start(update, context, product_id)
+    else:
+        await query.answer("Не удалось изменить статус", show_alert=True)
+
+
+async def admin_duplicate_product(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int):
+    query = update.callback_query
+    new_id = db.duplicate_product_to_draft(product_id)
+    if not new_id:
+        await query.answer("Не удалось создать дубликат", show_alert=True)
+        return
+
+    await query.answer("Создан дубликат в черновиках", show_alert=False)
+    await admin_edit_product_start(update, context, new_id)
 
 
 async def admin_delete_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1340,7 +1425,7 @@ async def admin_list_subcategories(update: Update, context: ContextTypes.DEFAULT
     query = update.callback_query
 
     subcats = db.get_all_subcategories()
-    categories_ru = db.get_categories('ru')
+    categories_ru = db.get_categories('ru', include_inactive=True)
 
     if not subcats:
         await _edit_or_send(
@@ -1354,7 +1439,8 @@ async def admin_list_subcategories(update: Update, context: ContextTypes.DEFAULT
     for s in subcats:
         parent = s.get('parent_cat_id')
         parent_name = categories_ru.get(parent, parent)
-        text += f"• <b>{s.get('subcat_id')}</b> → <i>{parent_name}</i>\n"
+        status = "✅" if s.get('is_active', 1) else "📝"
+        text += f"{status} <b>{s.get('subcat_id')}</b> → <i>{parent_name}</i>\n"
         text += f"  🇷🇺 {s.get('name_ru') or '—'}\n"
         text += f"  🇺🇦 {s.get('name_uk') or '—'}\n"
         text += f"  🇬🇧 {s.get('name_en') or '—'}\n\n"
@@ -1367,7 +1453,7 @@ async def admin_sort_subcategories(update: Update, context: ContextTypes.DEFAULT
     query = update.callback_query
 
     subcats = db.get_all_subcategories()
-    categories_ru = db.get_categories('ru')
+    categories_ru = db.get_categories('ru', include_inactive=True)
 
     if not subcats:
         await _edit_or_send(
@@ -1450,7 +1536,7 @@ async def handle_admin_add_subcategory_input(update: Update, context: ContextTyp
         context.user_data['add_subcategory_step'] = 'parent'
         db.set_pending_action(user.id, 'admin_add_subcategory_parent')
 
-        cats = db.get_categories('ru')
+        cats = db.get_categories('ru', include_inactive=True)
         await update.message.reply_text(
             "Введите <b>ID родительской категории</b>.\n"
             f"Доступные: {', '.join(cats.keys())}",
@@ -1459,7 +1545,7 @@ async def handle_admin_add_subcategory_input(update: Update, context: ContextTyp
         return
 
     if step == 'parent':
-        cats = db.get_categories('ru')
+        cats = db.get_categories('ru', include_inactive=True)
         if value not in cats:
             await update.message.reply_text(f"❌ Неверная категория. Доступные: {', '.join(cats.keys())}")
             return
@@ -1493,9 +1579,9 @@ async def handle_admin_add_subcategory_input(update: Update, context: ContextTyp
         name_uk = context.user_data.get('new_subcategory_name_uk')
         name_en = context.user_data.get('new_subcategory_name_en')
 
-        if db.add_subcategory(subcat_id, parent, name_ru, name_uk, name_en):
+        if db.add_subcategory(subcat_id, parent, name_ru, name_uk, name_en, is_active=0):
             await update.message.reply_text(
-                "✅ Подкатегория успешно добавлена!",
+                "✅ Подкатегория создана в черновиках!",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("📋 К списку подкатегорий", callback_data='admin_list_subcategories')],
                     [InlineKeyboardButton("➕ Добавить ещё", callback_data='admin_add_subcategory')],
@@ -1525,7 +1611,8 @@ async def admin_edit_subcategory_list(update: Update, context: ContextTypes.DEFA
     keyboard = []
     for s in subcats:
         label = s.get('name_ru') or s.get('subcat_id')
-        keyboard.append([InlineKeyboardButton(f"✏️ {label}", callback_data=f"admin_edit_subcat_{s.get('subcat_id')}")])
+        status = "✅" if s.get('is_active', 1) else "📝"
+        keyboard.append([InlineKeyboardButton(f"{status} {label}", callback_data=f"admin_edit_subcat_{s.get('subcat_id')}")])
     keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_subcategories_menu')])
 
     await _edit_or_send(query, "Выберите подкатегорию для редактирования:", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -1533,26 +1620,33 @@ async def admin_edit_subcategory_list(update: Update, context: ContextTypes.DEFA
 
 async def admin_edit_subcategory_start(update: Update, context: ContextTypes.DEFAULT_TYPE, subcat_id: str):
     query = update.callback_query
-    user = query.from_user
 
     subcat = db.get_subcategory(subcat_id)
     if not subcat:
         await _edit_or_send(query, "❌ Подкатегория не найдена")
         return
 
+    db.clear_pending_action(query.from_user.id)
     context.user_data.clear()
-    context.user_data['edit_subcat_id'] = subcat_id
-    context.user_data['edit_subcat_parent'] = subcat.get('parent_cat_id')
-    context.user_data['edit_subcat_step'] = 'parent'
-    db.set_pending_action(user.id, f"admin_edit_subcategory_parent_{subcat_id}")
-
-    cats = db.get_categories('ru')
+    parent_name = db.get_categories('ru', include_inactive=True).get(subcat.get('parent_cat_id'), subcat.get('parent_cat_id'))
+    toggle_label = "📤 Опубликовать" if not subcat.get('is_active', 1) else "📝 В черновик"
     await _edit_or_send(
         query,
-        "Введите новый <b>ID родительской категории</b> (или /skip):\n"
-        f"Текущий: <code>{subcat.get('parent_cat_id')}</code>\n"
-        f"Доступные: {', '.join(cats.keys())}",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data='admin_subcategories_menu')]]),
+        f"✏️ <b>Редактирование подкатегории {html.escape(subcat_id)}</b>\n\n"
+        f"Родитель: <code>{html.escape(subcat.get('parent_cat_id') or '-')}</code> ({html.escape(parent_name or '-')})\n"
+        f"🇷🇺 {html.escape(subcat.get('name_ru') or '—')}\n"
+        f"🇺🇦 {html.escape(subcat.get('name_uk') or '—')}\n"
+        f"🇬🇧 {html.escape(subcat.get('name_en') or '—')}\n"
+        f"Статус: {_draft_status_label(subcat.get('is_active', 1))}",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📂 Родительская категория", callback_data=f"admin_subcat_field_{subcat_id}_parent")],
+            [InlineKeyboardButton("🇷🇺 RU", callback_data=f"admin_subcat_field_{subcat_id}_name_ru")],
+            [InlineKeyboardButton("🇺🇦 UK", callback_data=f"admin_subcat_field_{subcat_id}_name_uk")],
+            [InlineKeyboardButton("🇬🇧 EN", callback_data=f"admin_subcat_field_{subcat_id}_name_en")],
+            [InlineKeyboardButton(toggle_label, callback_data=f"admin_subcat_toggle_{subcat_id}")],
+            [InlineKeyboardButton("📄 Дублировать", callback_data=f"admin_subcat_duplicate_{subcat_id}")],
+            [InlineKeyboardButton("◀️ Назад", callback_data='admin_edit_subcategory')],
+        ]),
         parse_mode='HTML'
     )
 
@@ -1560,71 +1654,121 @@ async def admin_edit_subcategory_start(update: Update, context: ContextTypes.DEF
 async def handle_admin_edit_subcategory_input(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, text: str):
     user = update.effective_user
     value = (text or "").strip()
-
-    subcat_id = context.user_data.get('edit_subcat_id')
-    if not subcat_id:
+    payload = action.replace('admin_edit_subcategory_', '', 1)
+    field = None
+    subcat_id = None
+    for candidate in ('parent', 'name_ru', 'name_uk', 'name_en'):
+        suffix = f"_{candidate}"
+        if payload.endswith(suffix):
+            subcat_id = payload[:-len(suffix)]
+            field = candidate
+            break
+    if not subcat_id or not field:
         db.clear_pending_action(user.id)
-        context.user_data.clear()
+        return
+    current = db.get_subcategory(subcat_id) or {}
+    if not current:
+        db.clear_pending_action(user.id)
+        await update.message.reply_text("❌ Подкатегория не найдена")
         return
 
-    step = context.user_data.get('edit_subcat_step', 'parent')
-
-    if step == 'parent':
-        parent = context.user_data.get('edit_subcat_parent')
-        if value != '/skip':
-            cats = db.get_categories('ru')
-            if value not in cats:
-                await update.message.reply_text(f"❌ Неверная категория. Доступные: {', '.join(cats.keys())}")
-                return
-            parent = value
-        context.user_data['edit_subcat_parent'] = parent
-        context.user_data['edit_subcat_step'] = 'name_ru'
-        db.set_pending_action(user.id, f"admin_edit_subcategory_name_ru_{subcat_id}")
-        await update.message.reply_text("Введите название на русском (или /skip):")
-        return
-
-    if step == 'name_ru':
-        if value != '/skip':
-            context.user_data['edit_subcat_name_ru'] = value
-        context.user_data['edit_subcat_step'] = 'name_uk'
-        db.set_pending_action(user.id, f"admin_edit_subcategory_name_uk_{subcat_id}")
-        await update.message.reply_text("Введите название на украинском (или /skip):")
-        return
-
-    if step == 'name_uk':
-        if value != '/skip':
-            context.user_data['edit_subcat_name_uk'] = value
-        context.user_data['edit_subcat_step'] = 'name_en'
-        db.set_pending_action(user.id, f"admin_edit_subcategory_name_en_{subcat_id}")
-        await update.message.reply_text("Введите название на английском (или /skip):")
-        return
-
-    if step == 'name_en':
-        if value != '/skip':
-            context.user_data['edit_subcat_name_en'] = value
-
-        current = db.get_subcategory(subcat_id) or {}
-        ok = db.update_subcategory(
-            subcat_id,
-            parent_cat_id=context.user_data.get('edit_subcat_parent', current.get('parent_cat_id')),
-            name_ru=context.user_data.get('edit_subcat_name_ru', current.get('name_ru')),
-            name_uk=context.user_data.get('edit_subcat_name_uk', current.get('name_uk')),
-            name_en=context.user_data.get('edit_subcat_name_en', current.get('name_en')),
+    if value == '/skip':
+        db.clear_pending_action(user.id)
+        await update.message.reply_text(
+            "Изменение отменено.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data=f'admin_edit_subcat_{subcat_id}')]])
         )
-        if ok:
-            await update.message.reply_text(
-                "✅ Подкатегория обновлена!",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 К списку подкатегорий", callback_data='admin_list_subcategories')],
-                    [InlineKeyboardButton("◀️ Назад", callback_data='admin_subcategories_menu')],
-                ])
-            )
-        else:
-            await update.message.reply_text("❌ Ошибка при обновлении подкатегории")
-
-        db.clear_pending_action(user.id)
-        context.user_data.clear()
         return
+
+    updates = {'is_active': 0}
+    if field == 'parent':
+        cats = db.get_categories('ru', include_inactive=True)
+        if value not in cats:
+            await update.message.reply_text(
+                f"❌ Неверная категория.\n\nДоступные категории:\n{_format_choice_list(cats)}",
+                parse_mode='HTML'
+            )
+            return
+        updates['parent_cat_id'] = value
+    elif field == 'name_ru':
+        updates['name_ru'] = value
+    elif field == 'name_uk':
+        updates['name_uk'] = value
+    elif field == 'name_en':
+        updates['name_en'] = value
+    else:
+        db.clear_pending_action(user.id)
+        return
+
+    ok = db.update_subcategory(subcat_id, **updates)
+    db.clear_pending_action(user.id)
+    if ok:
+        await update.message.reply_text(
+            "✅ Подкатегория обновлена и сохранена в черновик!",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data=f'admin_edit_subcat_{subcat_id}')]])
+        )
+    else:
+        await update.message.reply_text("❌ Ошибка при обновлении подкатегории")
+
+
+async def admin_edit_subcategory_field_start(update: Update, context: ContextTypes.DEFAULT_TYPE, subcat_id: str, field: str):
+    query = update.callback_query
+    subcat = db.get_subcategory(subcat_id)
+    if not subcat:
+        await _edit_or_send(query, "❌ Подкатегория не найдена")
+        return
+
+    db.set_pending_action(query.from_user.id, f"admin_edit_subcategory_{subcat_id}_{field}")
+
+    if field == 'parent':
+        cats = db.get_categories('ru', include_inactive=True)
+        text = (
+            f"Введите новый <b>ID родительской категории</b> или /skip.\n\n"
+            f"Текущая: <code>{html.escape(subcat.get('parent_cat_id') or '-')}</code>\n"
+            f"Доступные категории:\n{_format_choice_list(cats)}"
+        )
+    elif field == 'name_ru':
+        text = f"Введите новое название на русском или /skip.\n\nТекущее: {html.escape(subcat.get('name_ru') or '—')}"
+    elif field == 'name_uk':
+        text = f"Введите новое название на украинском или /skip.\n\nТекущее: {html.escape(subcat.get('name_uk') or '—')}"
+    elif field == 'name_en':
+        text = f"Введите новое название на английском или /skip.\n\nТекущее: {html.escape(subcat.get('name_en') or '—')}"
+    else:
+        await query.answer("Неизвестное поле", show_alert=True)
+        return
+
+    await _edit_or_send(
+        query,
+        text,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data=f'admin_edit_subcat_{subcat_id}')]]),
+        parse_mode='HTML'
+    )
+
+
+async def admin_toggle_subcategory_status(update: Update, context: ContextTypes.DEFAULT_TYPE, subcat_id: str):
+    query = update.callback_query
+    subcat = db.get_subcategory(subcat_id)
+    if not subcat:
+        await query.answer("Подкатегория не найдена", show_alert=True)
+        return
+
+    ok = db.update_subcategory(subcat_id, is_active=0 if subcat.get('is_active', 1) else 1)
+    if ok:
+        await query.answer("Статус подкатегории обновлён", show_alert=False)
+        await admin_edit_subcategory_start(update, context, subcat_id)
+    else:
+        await query.answer("Не удалось изменить статус", show_alert=True)
+
+
+async def admin_duplicate_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE, subcat_id: str):
+    query = update.callback_query
+    new_subcat_id = db.duplicate_subcategory_to_draft(subcat_id)
+    if not new_subcat_id:
+        await query.answer("Не удалось создать дубликат", show_alert=True)
+        return
+
+    await query.answer("Создан дубликат подкатегории в черновиках", show_alert=False)
+    await admin_edit_subcategory_start(update, context, new_subcat_id)
 
 
 async def admin_delete_subcategory_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1668,21 +1812,17 @@ async def admin_list_categories(update: Update, context: ContextTypes.DEFAULT_TY
     """Показать список категорий из БД на всех языках"""
     query = update.callback_query
     
-    # Получаем категории из БД
-    categories_ru = db.get_categories('ru')
-    categories_uk = db.get_categories('uk')
-    categories_en = db.get_categories('en')
+    categories = db.get_all_categories()
     
     text = "📋 <b>Список категорий:</b>\n\n"
     
-    # Собираем все уникальные ID
-    all_ids = set(categories_ru.keys()) | set(categories_uk.keys()) | set(categories_en.keys())
-    
-    for cat_id in sorted(all_ids):
-        text += f"• <b>{cat_id}</b>\n"
-        text += f"  🇷🇺 {categories_ru.get(cat_id, '—')}\n"
-        text += f"  🇺🇦 {categories_uk.get(cat_id, '—')}\n"
-        text += f"  🇬🇧 {categories_en.get(cat_id, '—')}\n\n"
+    for category in categories:
+        cat_id = category.get('cat_id')
+        status = "✅" if category.get('is_active', 1) else "📝"
+        text += f"{status} <b>{cat_id}</b>\n"
+        text += f"  🇷🇺 {category.get('name_ru', '—')}\n"
+        text += f"  🇺🇦 {category.get('name_uk', '—')}\n"
+        text += f"  🇬🇧 {category.get('name_en', '—')}\n\n"
     
     keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')]]
     await _edit_or_send(query, 
@@ -1765,7 +1905,7 @@ async def handle_admin_add_category_input(update: Update, context: ContextTypes.
             )
             return
         
-        existing = db.get_categories()
+        existing = db.get_categories(include_inactive=True)
         if text in existing:
             await update.message.reply_text(
                 f"❌ Категория с ID <b>{text}</b> уже существует!\n"
@@ -1825,9 +1965,9 @@ async def handle_admin_add_category_input(update: Update, context: ContextTypes.
         name_uk = context.user_data.get('new_category_name_uk')
         name_en = context.user_data.get('new_category_name_en')
         
-        if db.add_category(cat_id, name_ru, name_uk, name_en):
+        if db.add_category(cat_id, name_ru, name_uk, name_en, is_active=0):
             await update.message.reply_text(
-                f"✅ Категория успешно добавлена!\n\n"
+                f"✅ Категория создана в черновиках!\n\n"
                 f"ID: <b>{cat_id}</b>\n"
                 f"🇷🇺 Русский: <b>{name_ru}</b>\n"
                 f"🇺🇦 Українська: <b>{name_uk or 'не указан'}</b>\n"
@@ -1851,10 +1991,13 @@ async def admin_edit_category_list(update: Update, context: ContextTypes.DEFAULT
     """Список категорий для редактирования"""
     query = update.callback_query
     
-    categories = db.get_categories('ru')  # Показываем русские названия в списке
+    categories = db.get_all_categories()
     keyboard = []
-    for cat_id, cat_name in categories.items():
-        keyboard.append([InlineKeyboardButton(f"✏️ {cat_name}", callback_data=f'admin_edit_cat_{cat_id}')])
+    for category in categories:
+        cat_id = category.get('cat_id')
+        cat_name = category.get('name_ru') or cat_id
+        status = "✅" if category.get('is_active', 1) else "📝"
+        keyboard.append([InlineKeyboardButton(f"{status} {cat_name}", callback_data=f'admin_edit_cat_{cat_id}')])
     
     keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')])
     
@@ -1875,6 +2018,8 @@ async def admin_edit_category_start(update: Update, context: ContextTypes.DEFAUL
     categories_uk = db.get_categories('uk')
     categories_en = db.get_categories('en')
     photo_state = "есть" if category.get('photo_url') else "нет"
+    status = _draft_status_label(category.get('is_active', 1))
+    toggle_label = "📤 Опубликовать" if not category.get('is_active', 1) else "📝 В черновик"
 
     await _edit_or_send(
         query,
@@ -1882,11 +2027,14 @@ async def admin_edit_category_start(update: Update, context: ContextTypes.DEFAUL
         f"🇷🇺 {category.get('name_ru') or '—'}\n"
         f"🇺🇦 {categories_uk.get(cat_id) or category.get('name_uk') or '—'}\n"
         f"🇬🇧 {categories_en.get(cat_id) or category.get('name_en') or '—'}\n"
+        f"Статус: {status}\n"
         f"🖼 Фото: {photo_state}",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("📝 Изменить названия", callback_data=f'admin_edit_cat_text_{cat_id}')],
             [InlineKeyboardButton("🖼 Обновить фото", callback_data=f'admin_edit_cat_photo_{cat_id}')],
             [InlineKeyboardButton("🗑 Удалить фото", callback_data=f'admin_edit_cat_photo_remove_{cat_id}')],
+            [InlineKeyboardButton(toggle_label, callback_data=f'admin_category_toggle_{cat_id}')],
+            [InlineKeyboardButton("📄 Дублировать", callback_data=f'admin_category_duplicate_{cat_id}')],
             [InlineKeyboardButton("◀️ Назад", callback_data='admin_edit_category')],
         ]),
         parse_mode='HTML'
@@ -1951,6 +2099,32 @@ async def admin_remove_category_photo(update: Update, context: ContextTypes.DEFA
             "❌ Не удалось удалить фото категории.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data=f'admin_edit_cat_{cat_id}')]])
         )
+
+
+async def admin_toggle_category_status(update: Update, context: ContextTypes.DEFAULT_TYPE, cat_id: str):
+    query = update.callback_query
+    category = db.get_category(cat_id)
+    if not category:
+        await query.answer("Категория не найдена", show_alert=True)
+        return
+
+    ok = db.update_category(cat_id, is_active=0 if category.get('is_active', 1) else 1)
+    if ok:
+        await query.answer("Статус категории обновлён", show_alert=False)
+        await admin_edit_category_start(update, context, cat_id)
+    else:
+        await query.answer("Не удалось изменить статус", show_alert=True)
+
+
+async def admin_duplicate_category(update: Update, context: ContextTypes.DEFAULT_TYPE, cat_id: str):
+    query = update.callback_query
+    new_cat_id = db.duplicate_category_to_draft(cat_id)
+    if not new_cat_id:
+        await query.answer("Не удалось создать дубликат", show_alert=True)
+        return
+
+    await query.answer("Создан дубликат категории в черновиках", show_alert=False)
+    await admin_edit_category_start(update, context, new_cat_id)
 
 
 async def handle_admin_edit_category_input(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, text: str):
@@ -2025,7 +2199,7 @@ async def admin_delete_category_list(update: Update, context: ContextTypes.DEFAU
     """Список категорий для удаления"""
     query = update.callback_query
     
-    categories = db.get_categories('ru')
+    categories = db.get_categories('ru', include_inactive=True)
     keyboard = []
     for cat_id, cat_name in categories.items():
         keyboard.append([InlineKeyboardButton(f"❌ {cat_name}", callback_data=f'admin_delete_cat_{cat_id}')])
@@ -2042,7 +2216,7 @@ async def admin_delete_category_confirm(update: Update, context: ContextTypes.DE
     """Подтверждение удаления категории"""
     query = update.callback_query
     
-    categories = db.get_categories('ru')
+    categories = db.get_categories('ru', include_inactive=True)
     if cat_id not in categories:
         await _edit_or_send(query, "❌ Категория не найдена")
         return
@@ -2102,9 +2276,9 @@ async def handle_admin_photo_input(update: Update, context: ContextTypes.DEFAULT
             context.user_data.clear()
             return
 
-        if db.update_product(product_id, input_lang='auto', photo_url=photo_path):
+        if db.update_product(product_id, input_lang='auto', photo_url=photo_path, is_active=0):
             await update.message.reply_text(
-                "✅ Фото товара обновлено!",
+                "✅ Фото товара обновлено и сохранено в черновик!",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("◀️ Назад к товару", callback_data=f'admin_edit_{product_id}')],
                 ])
@@ -2122,9 +2296,9 @@ async def handle_admin_photo_input(update: Update, context: ContextTypes.DEFAULT
         name_uk = context.user_data.get('new_category_name_uk')
         name_en = context.user_data.get('new_category_name_en')
 
-        if db.add_category(cat_id, name_ru, name_uk, name_en, photo_url=photo.file_id):
+        if db.add_category(cat_id, name_ru, name_uk, name_en, photo_url=photo.file_id, is_active=0):
             await update.message.reply_text(
-                "✅ Категория успешно добавлена!",
+                "✅ Категория создана в черновиках!",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("📋 К списку категорий", callback_data='admin_list_categories')],
                     [InlineKeyboardButton("➕ Добавить ещё", callback_data='admin_add_category')],
@@ -2146,9 +2320,9 @@ async def handle_admin_photo_input(update: Update, context: ContextTypes.DEFAULT
             db.clear_pending_action(user.id)
             return
 
-        if db.update_category(cat_id, photo_url=photo.file_id):
+        if db.update_category(cat_id, photo_url=photo.file_id, is_active=0):
             await update.message.reply_text(
-                "✅ Фото категории обновлено!",
+                "✅ Фото категории обновлено и сохранено в черновик!",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("◀️ Назад", callback_data=f'admin_edit_cat_{cat_id}')],
                 ])
@@ -2174,7 +2348,7 @@ async def handle_admin_add_category_input(update: Update, context: ContextTypes.
         if not re.match(r'^[a-z0-9_]+$', text):
             await update.message.reply_text("❌ ID может содержать только a-z, 0-9 и _. Попробуйте ещё раз:")
             return
-        existing = db.get_categories()
+        existing = db.get_categories(include_inactive=True)
         if text in existing:
             await update.message.reply_text(f"❌ Категория с ID <b>{text}</b> уже существует. Введите другой ID:", parse_mode='HTML')
             return
@@ -2213,9 +2387,9 @@ async def handle_admin_add_category_input(update: Update, context: ContextTypes.
         name_en = context.user_data.get('new_category_name_en')
         photo_url = context.user_data.get('new_category_photo_url')
 
-        if db.add_category(cat_id, name_ru, name_uk, name_en, photo_url=photo_url):
+        if db.add_category(cat_id, name_ru, name_uk, name_en, photo_url=photo_url, is_active=0):
             await update.message.reply_text(
-                "✅ Категория успешно добавлена!",
+                "✅ Категория создана в черновиках!",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("📋 К списку категорий", callback_data='admin_list_categories')],
                     [InlineKeyboardButton("➕ Добавить ещё", callback_data='admin_add_category')],
@@ -2270,9 +2444,9 @@ async def handle_admin_edit_category_input(update: Update, context: ContextTypes
         name_ru = context.user_data.get('edit_cat_ru_new', context.user_data.get('edit_cat_ru'))
         name_uk = context.user_data.get('edit_cat_uk_new', context.user_data.get('edit_cat_uk'))
         name_en = context.user_data.get('edit_cat_en_new', context.user_data.get('edit_cat_en'))
-        if db.update_category(cat_id, name_ru, name_uk, name_en):
+        if db.update_category(cat_id, name_ru, name_uk, name_en, is_active=0):
             await update.message.reply_text(
-                "✅ Категория обновлена!",
+                "✅ Категория обновлена и сохранена в черновик!",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("📋 К списку категорий", callback_data='admin_list_categories')],
                     [InlineKeyboardButton("◀️ Назад", callback_data='admin_categories_menu')],
@@ -2315,14 +2489,14 @@ async def handle_admin_edit_product_input(update: Update, context: ContextTypes.
             await _done("Изменение названия отменено.")
             return
 
-        if db.update_product(product_id, input_lang='auto', name=text):
-            await _done("✅ Название обновлено.")
+        if db.update_product(product_id, input_lang='auto', name=text, is_active=0):
+            await _done("✅ Название обновлено и сохранено в черновик.")
         else:
             await update.message.reply_text("❌ Ошибка при обновлении названия товара")
         return
 
     if field == 'category':
-        categories = db.get_categories('ru')
+        categories = db.get_categories('ru', include_inactive=True)
         if text == '/skip':
             await _done("Изменение категории отменено.")
             return
@@ -2340,11 +2514,12 @@ async def handle_admin_edit_product_input(update: Update, context: ContextTypes.
         if current.get('subcategory') and current['subcategory'] not in subcats:
             updates['subcategory'] = None
 
+        updates['is_active'] = 0
         if db.update_product(product_id, input_lang='auto', **updates):
             suffix = ""
             if 'subcategory' in updates:
                 suffix = "\nПодкатегория очищена, потому что не относится к новой категории."
-            await _done(f"✅ Категория обновлена.{suffix}")
+            await _done(f"✅ Категория обновлена и сохранена в черновик.{suffix}")
         else:
             await update.message.reply_text("❌ Ошибка при обновлении категории товара")
         return
@@ -2370,8 +2545,8 @@ async def handle_admin_edit_product_input(update: Update, context: ContextTypes.
                 return
             new_subcategory = text
 
-        if db.update_product(product_id, input_lang='auto', subcategory=new_subcategory):
-            await _done("✅ Подкатегория обновлена.")
+        if db.update_product(product_id, input_lang='auto', subcategory=new_subcategory, is_active=0):
+            await _done("✅ Подкатегория обновлена и сохранена в черновик.")
         else:
             await update.message.reply_text("❌ Ошибка при обновлении подкатегории товара")
         return
@@ -2386,8 +2561,8 @@ async def handle_admin_edit_product_input(update: Update, context: ContextTypes.
             except ValueError:
                 await update.message.reply_text("❌ Введите корректную цену, например 45.99 или -1")
                 return
-        if db.update_product(product_id, input_lang='auto', price_usd=new_price):
-            await _done("✅ Цена обновлена.")
+        if db.update_product(product_id, input_lang='auto', price_usd=new_price, is_active=0):
+            await _done("✅ Цена обновлена и сохранена в черновик.")
         else:
             await update.message.reply_text("❌ Ошибка при обновлении цены товара")
         return
@@ -2397,8 +2572,8 @@ async def handle_admin_edit_product_input(update: Update, context: ContextTypes.
             await _done("Изменение описания отменено.")
             return
 
-        if db.update_product(product_id, input_lang='auto', description=text):
-            await _done("✅ Описание обновлено.")
+        if db.update_product(product_id, input_lang='auto', description=text, is_active=0):
+            await _done("✅ Описание обновлено и сохранено в черновик.")
         else:
             await update.message.reply_text("❌ Ошибка при обновлении описания товара")
         return
@@ -2413,8 +2588,8 @@ async def handle_admin_edit_product_input(update: Update, context: ContextTypes.
             except ValueError:
                 await update.message.reply_text("❌ Запас должен быть целым числом")
                 return
-        if db.update_product(product_id, input_lang='auto', stock=new_stock):
-            await _done("✅ Запас обновлён.")
+        if db.update_product(product_id, input_lang='auto', stock=new_stock, is_active=0):
+            await _done("✅ Запас обновлён и сохранён в черновик.")
         else:
             await update.message.reply_text("❌ Ошибка при обновлении запаса товара")
         return
@@ -2429,8 +2604,8 @@ async def handle_admin_edit_product_input(update: Update, context: ContextTypes.
             except ValueError:
                 await update.message.reply_text("❌ sort order должен быть целым числом")
                 return
-        if db.update_product(product_id, input_lang='auto', sort_order=new_sort):
-            await _done("✅ Sort order обновлён.")
+        if db.update_product(product_id, input_lang='auto', sort_order=new_sort, is_active=0):
+            await _done("✅ Sort order обновлён и сохранён в черновик.")
         else:
             await update.message.reply_text("❌ Ошибка при обновлении sort order товара")
         return

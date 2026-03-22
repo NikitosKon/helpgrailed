@@ -215,6 +215,7 @@ class Database:
                     name_uk TEXT,
                     name_en TEXT,
                     photo_url TEXT,
+                    is_active INTEGER DEFAULT 1,
                     sort_order INTEGER DEFAULT 0,
                     created_at TEXT,
                     updated_at TEXT
@@ -227,6 +228,7 @@ class Database:
                     name_uk TEXT,
                     name_en TEXT,
                     photo_url TEXT,
+                    is_active INTEGER DEFAULT 1,
                     sort_order INTEGER DEFAULT 0,
                     created_at TEXT,
                     updated_at TEXT
@@ -364,6 +366,7 @@ class Database:
                     name_uk TEXT,
                     name_en TEXT,
                     photo_url TEXT,
+                    is_active INTEGER DEFAULT 1,
                     sort_order INTEGER DEFAULT 0,
                     created_at TEXT,
                     updated_at TEXT
@@ -376,6 +379,7 @@ class Database:
                     name_uk TEXT,
                     name_en TEXT,
                     photo_url TEXT,
+                    is_active INTEGER DEFAULT 1,
                     sort_order INTEGER DEFAULT 0,
                     created_at TEXT,
                     updated_at TEXT
@@ -426,6 +430,10 @@ class Database:
                     "ALTER TABLE categories ADD COLUMN IF NOT EXISTS photo_url TEXT",
                     commit=True
                 )
+                self.execute(
+                    "ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_active INTEGER DEFAULT 1",
+                    commit=True
+                )
                 try:
                     self.execute(
                         """UPDATE categories
@@ -461,6 +469,7 @@ class Database:
                         name_uk TEXT,
                         name_en TEXT,
                         photo_url TEXT,
+                        is_active INTEGER DEFAULT 1,
                         sort_order INTEGER DEFAULT 0,
                         created_at TEXT,
                         updated_at TEXT
@@ -478,6 +487,8 @@ class Database:
                     self.execute("ALTER TABLE categories ADD COLUMN name_en TEXT", commit=True)
                 if 'photo_url' not in col_names:
                     self.execute("ALTER TABLE categories ADD COLUMN photo_url TEXT", commit=True)
+                if 'is_active' not in col_names:
+                    self.execute("ALTER TABLE categories ADD COLUMN is_active INTEGER DEFAULT 1", commit=True)
                 if 'name' in col_names:
                     self.execute(
                         """UPDATE categories
@@ -512,18 +523,25 @@ class Database:
                         name_uk TEXT,
                         name_en TEXT,
                         photo_url TEXT,
+                        is_active INTEGER DEFAULT 1,
                         sort_order INTEGER DEFAULT 0,
                         created_at TEXT,
                         updated_at TEXT
                     )""",
                     commit=True
                 )
+                subcat_cols = self.execute("PRAGMA table_info(subcategories)", fetch=True) or []
+                subcat_col_names = {row[1] for row in subcat_cols}
+                if 'is_active' not in subcat_col_names:
+                    self.execute("ALTER TABLE subcategories ADD COLUMN is_active INTEGER DEFAULT 1", commit=True)
 
             self._bootstrap_vinted_hierarchy_if_needed()
         except Exception as e:
             logger.warning(f"Schema compatibility migration skipped: {e}")
 
     def _bootstrap_vinted_hierarchy_if_needed(self):
+        """Legacy hierarchy bootstrap is disabled."""
+        return
         """v3 bootstrap: multiple top-level services, each with subcategories."""
         try:
             if self.get_setting('category_hierarchy_v3_done') == '1':
@@ -742,6 +760,8 @@ class Database:
             logger.warning(f"Could not bootstrap category hierarchy: {e}")
 
     def seed_default_categories(self):
+        """Default category seeding is disabled."""
+        return
         """Автозаполнение категорий, если таблица пустая."""
         try:
             result = self.execute("SELECT COUNT(*) as count FROM categories", fetch=True)
@@ -788,6 +808,8 @@ class Database:
             logger.warning(f"Could not seed default categories: {e}")
     
     def seed_products(self):
+        """Default product seeding is disabled."""
+        return
         examples = [
             ('grailed_accounts', 'Aged Grailed 2022–2023 (4.7+)', 95.0, 
              '✅ Возраст 3+ года\n✅ Рейтинг 4.7+\n✅ Есть отзывы', -1, 10),
@@ -1142,19 +1164,19 @@ class Database:
                    subcategory: Optional[str] = None,
                    description: Optional[str] = None, stock: int = -1, 
                    sort_order: int = 0, photo_url: Optional[str] = None,
-                   input_lang: str = 'ru') -> bool:
+                   input_lang: str = 'ru', is_active: int = 0) -> bool:
         now = datetime.now().isoformat()
         try:
             name_i18n = build_i18n_triplet(name, source_lang=input_lang)
             desc_i18n = build_i18n_triplet(description, source_lang=input_lang) if description else {'ru': None, 'uk': None, 'en': None}
             self.execute(
-                """INSERT INTO products 
-                   (category, subcategory, name, name_ru, name_uk, name_en, price_usd, description, description_ru, description_uk, description_en, stock, sort_order, photo_url, created_at, updated_at) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO products
+                   (category, subcategory, name, name_ru, name_uk, name_en, price_usd, description, description_ru, description_uk, description_en, stock, is_active, sort_order, photo_url, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     category, subcategory, name, name_i18n['ru'], name_i18n['uk'], name_i18n['en'],
                     price, description, desc_i18n['ru'], desc_i18n['uk'], desc_i18n['en'],
-                    stock, sort_order, photo_url, now, now
+                    stock, is_active, sort_order, photo_url, now, now
                 ),
                 commit=True
             )
@@ -1208,6 +1230,82 @@ class Database:
         except Exception as e:
             logger.error(f"Failed to update product {product_id}: {e}")
             return False
+
+    def duplicate_product_to_draft(self, product_id: int) -> Optional[int]:
+        product = self.get_product_cached(product_id)
+        if not product:
+            return None
+
+        base_name = product.get('name_ru') or product.get('name') or 'Copy'
+        draft_name = f"{base_name} (draft copy)"
+        now = datetime.now().isoformat()
+        name_i18n = build_i18n_triplet(draft_name, source_lang='ru')
+        description = product.get('description_ru') or product.get('description')
+
+        try:
+            if self.use_postgres:
+                result = self.execute(
+                    """INSERT INTO products
+                       (category, subcategory, name, name_ru, name_uk, name_en, price_usd, description, description_ru, description_uk, description_en, stock, is_active, sort_order, photo_url, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       RETURNING id""",
+                    (
+                        product.get('category'),
+                        product.get('subcategory'),
+                        draft_name,
+                        name_i18n['ru'],
+                        name_i18n['uk'],
+                        name_i18n['en'],
+                        product.get('price_usd'),
+                        description,
+                        description,
+                        product.get('description_uk'),
+                        product.get('description_en'),
+                        product.get('stock', -1),
+                        0,
+                        product.get('sort_order', 0),
+                        product.get('photo_url'),
+                        now,
+                        now,
+                    ),
+                    fetch=True,
+                    commit=True
+                )
+                new_id = result[0]['id'] if result else None
+            else:
+                self.execute(
+                    """INSERT INTO products
+                       (category, subcategory, name, name_ru, name_uk, name_en, price_usd, description, description_ru, description_uk, description_en, stock, is_active, sort_order, photo_url, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        product.get('category'),
+                        product.get('subcategory'),
+                        draft_name,
+                        name_i18n['ru'],
+                        name_i18n['uk'],
+                        name_i18n['en'],
+                        product.get('price_usd'),
+                        description,
+                        description,
+                        product.get('description_uk'),
+                        product.get('description_en'),
+                        product.get('stock', -1),
+                        0,
+                        product.get('sort_order', 0),
+                        product.get('photo_url'),
+                        now,
+                        now,
+                    ),
+                    commit=True
+                )
+                row = self.execute("SELECT last_insert_rowid()", fetch=True)
+                new_id = row[0][0] if row else None
+
+            self.invalidate_product_cache(-1)
+            return new_id
+        except Exception as e:
+            logger.error(f"Failed to duplicate product {product_id}: {e}")
+            return None
     
     def delete_product(self, product_id: int) -> bool:
         try:
@@ -1219,13 +1317,15 @@ class Database:
             logger.error(f"Failed to delete product {product_id}: {e}")
             return False
     
-    def get_categories(self, lang='ru') -> Dict[str, str]:
+    def get_categories(self, lang='ru', include_inactive: bool = False) -> Dict[str, str]:
         """Получить все категории из БД на нужном языке"""
         try:
-            result = self.execute(
-                "SELECT cat_id, name_ru, name_uk, name_en FROM categories ORDER BY sort_order, cat_id",
-                fetch=True
-            )
+            query = "SELECT cat_id, name_ru, name_uk, name_en FROM categories"
+            params = ()
+            if not include_inactive:
+                query += " WHERE is_active = 1"
+            query += " ORDER BY sort_order, cat_id"
+            result = self.execute(query, params, fetch=True)
             
             categories = {}
             if result:
@@ -1251,34 +1351,35 @@ class Database:
                 logger.info(f"Loaded {len(categories)} categories from DB for lang {lang}")
                 return categories
             else:
-                logger.warning("No categories found in database, using defaults")
-                return {cat_id: (names.get(lang) or names['ru']) for cat_id, names in DEFAULT_ROOT_CATEGORIES.items()}
+                logger.warning("No categories found in database")
+                return {}
         except Exception as e:
             logger.error(f"Error getting categories: {e}")
-            return {cat_id: (names.get(lang) or names['ru']) for cat_id, names in DEFAULT_ROOT_CATEGORIES.items()}
+            return {}
 
-    def get_all_categories(self) -> List[dict]:
+    def get_all_categories(self, include_inactive: bool = True) -> List[dict]:
         try:
-            result = self.execute(
-                "SELECT cat_id, name_ru, name_uk, name_en, photo_url, sort_order FROM categories ORDER BY sort_order, cat_id",
-                fetch=True
-            )
+            query = "SELECT cat_id, name_ru, name_uk, name_en, photo_url, is_active, sort_order FROM categories"
+            if not include_inactive:
+                query += " WHERE is_active = 1"
+            query += " ORDER BY sort_order, cat_id"
+            result = self.execute(query, fetch=True)
             return [dict(r) for r in result] if result else []
         except Exception as e:
             logger.error(f"Error getting all categories: {e}")
             return []
 
-    def get_subcategories(self, parent_cat_id: str, lang: str = 'ru') -> Dict[str, str]:
+    def get_subcategories(self, parent_cat_id: str, lang: str = 'ru', include_inactive: bool = False) -> Dict[str, str]:
         """Получить подкатегории для выбранной категории."""
         try:
-            result = self.execute(
-                """SELECT subcat_id, name_ru, name_uk, name_en
+            query = """SELECT subcat_id, name_ru, name_uk, name_en
                    FROM subcategories
-                   WHERE parent_cat_id = ?
-                   ORDER BY sort_order, subcat_id""",
-                (parent_cat_id,),
-                fetch=True
-            )
+                   WHERE parent_cat_id = ?"""
+            params = [parent_cat_id]
+            if not include_inactive:
+                query += " AND is_active = 1"
+            query += " ORDER BY sort_order, subcat_id"
+            result = self.execute(query, tuple(params), fetch=True)
             subcats: Dict[str, str] = {}
             for row in result or []:
                 if self.use_postgres:
@@ -1305,14 +1406,14 @@ class Database:
             logger.error(f"Error getting subcategories for {parent_cat_id}: {e}")
             return {}
 
-    def get_all_subcategories(self) -> List[dict]:
+    def get_all_subcategories(self, include_inactive: bool = True) -> List[dict]:
         try:
-            result = self.execute(
-                """SELECT subcat_id, parent_cat_id, name_ru, name_uk, name_en, sort_order
-                   FROM subcategories
-                   ORDER BY parent_cat_id, sort_order, subcat_id""",
-                fetch=True
-            )
+            query = """SELECT subcat_id, parent_cat_id, name_ru, name_uk, name_en, photo_url, is_active, sort_order
+                   FROM subcategories"""
+            if not include_inactive:
+                query += " WHERE is_active = 1"
+            query += " ORDER BY parent_cat_id, sort_order, subcat_id"
+            result = self.execute(query, fetch=True)
             return [dict(r) for r in result] if result else []
         except Exception as e:
             logger.error(f"Error getting all subcategories: {e}")
@@ -1321,7 +1422,7 @@ class Database:
     def get_subcategory(self, subcat_id: str) -> Optional[dict]:
         try:
             result = self.execute(
-                """SELECT subcat_id, parent_cat_id, name_ru, name_uk, name_en, photo_url, sort_order
+                """SELECT subcat_id, parent_cat_id, name_ru, name_uk, name_en, photo_url, is_active, sort_order
                    FROM subcategories
                    WHERE subcat_id = ?""",
                 (subcat_id,),
@@ -1339,7 +1440,8 @@ class Database:
                 'name_uk': row[3],
                 'name_en': row[4],
                 'photo_url': row[5] if len(row) > 5 else None,
-                'sort_order': row[6] if len(row) > 6 else 0,
+                'is_active': row[6] if len(row) > 6 else 1,
+                'sort_order': row[7] if len(row) > 7 else 0,
             }
         except Exception as e:
             logger.error(f"Failed to get subcategory {subcat_id}: {e}")
@@ -1354,14 +1456,15 @@ class Database:
         name_en: str = None,
         sort_order: int = 0,
         photo_url: str = None,
+        is_active: int = 0,
     ) -> bool:
         now = datetime.now().isoformat()
         try:
             self.execute(
                 """INSERT INTO subcategories
-                   (subcat_id, parent_cat_id, name_ru, name_uk, name_en, photo_url, sort_order, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (subcat_id, parent_cat_id, name_ru, name_uk, name_en, photo_url, sort_order, now, now),
+                   (subcat_id, parent_cat_id, name_ru, name_uk, name_en, photo_url, is_active, sort_order, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (subcat_id, parent_cat_id, name_ru, name_uk, name_en, photo_url, is_active, sort_order, now, now),
                 commit=True
             )
             return True
@@ -1377,6 +1480,7 @@ class Database:
         name_uk: str = None,
         name_en: str = None,
         photo_url: str = None,
+        is_active: int = None,
     ) -> bool:
         now = datetime.now().isoformat()
         updates = []
@@ -1388,6 +1492,7 @@ class Database:
             ('name_uk', name_uk),
             ('name_en', name_en),
             ('photo_url', photo_url),
+            ('is_active', is_active),
         ]:
             if value is not None:
                 updates.append(f"{key} = ?")
@@ -1409,6 +1514,31 @@ class Database:
         except Exception as e:
             logger.error(f"Failed to update subcategory {subcat_id}: {e}")
             return False
+
+    def duplicate_subcategory_to_draft(self, subcat_id: str) -> Optional[str]:
+        subcat = self.get_subcategory(subcat_id)
+        if not subcat:
+            return None
+
+        base_id = f"{subcat_id}_draft"
+        candidate = base_id
+        index = 1
+        while self.get_subcategory(candidate):
+            index += 1
+            candidate = f"{base_id}_{index}"
+
+        if self.add_subcategory(
+            candidate,
+            subcat.get('parent_cat_id'),
+            f"{subcat.get('name_ru') or subcat_id} (draft)",
+            subcat.get('name_uk'),
+            subcat.get('name_en'),
+            sort_order=subcat.get('sort_order', 0),
+            photo_url=subcat.get('photo_url'),
+            is_active=0,
+        ):
+            return candidate
+        return None
 
     def move_subcategory(self, subcat_id: str, direction: str) -> bool:
         try:
@@ -1644,7 +1774,7 @@ class Database:
         """Получить категорию с метаданными."""
         try:
             result = self.execute(
-                "SELECT cat_id, name_ru, name_uk, name_en, photo_url, sort_order FROM categories WHERE cat_id = ?",
+                "SELECT cat_id, name_ru, name_uk, name_en, photo_url, is_active, sort_order FROM categories WHERE cat_id = ?",
                 (cat_id,),
                 fetch=True
             )
@@ -1659,24 +1789,25 @@ class Database:
                 'name_uk': row[2],
                 'name_en': row[3],
                 'photo_url': row[4] if len(row) > 4 else None,
-                'sort_order': row[5] if len(row) > 5 else 0,
+                'is_active': row[5] if len(row) > 5 else 1,
+                'sort_order': row[6] if len(row) > 6 else 0,
             }
         except Exception as e:
             logger.error(f"Failed to get category {cat_id}: {e}")
             return None
 
-    def add_category(self, cat_id: str, name_ru: str, name_uk: str = None, name_en: str = None, sort_order: int = 0, photo_url: str = None) -> bool:
+    def add_category(self, cat_id: str, name_ru: str, name_uk: str = None, name_en: str = None, sort_order: int = 0, photo_url: str = None, is_active: int = 0) -> bool:
         """Добавить категорию с переводами"""
         now = datetime.now().isoformat()
         try:
             if self.use_postgres:
-                query = """INSERT INTO categories (cat_id, name, name_ru, name_uk, name_en, photo_url, sort_order, created_at, updated_at) 
-                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"""
-                params = (cat_id, name_ru, name_ru, name_uk, name_en, photo_url, sort_order, now, now)
+                query = """INSERT INTO categories (cat_id, name, name_ru, name_uk, name_en, photo_url, is_active, sort_order, created_at, updated_at)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+                params = (cat_id, name_ru, name_ru, name_uk, name_en, photo_url, is_active, sort_order, now, now)
             else:
-                query = """INSERT INTO categories (cat_id, name_ru, name_uk, name_en, photo_url, sort_order, created_at, updated_at) 
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)"""
-                params = (cat_id, name_ru, name_uk, name_en, photo_url, sort_order, now, now)
+                query = """INSERT INTO categories (cat_id, name_ru, name_uk, name_en, photo_url, is_active, sort_order, created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                params = (cat_id, name_ru, name_uk, name_en, photo_url, is_active, sort_order, now, now)
             
             self.execute(query, params, commit=True)
             logger.info(f"Category added successfully: {cat_id} - {name_ru}")
@@ -1685,7 +1816,7 @@ class Database:
             logger.error(f"Failed to add category {cat_id}: {e}")
             return False
 
-    def update_category(self, cat_id: str, name_ru: str = None, name_uk: str = None, name_en: str = None, photo_url: str = None) -> bool:
+    def update_category(self, cat_id: str, name_ru: str = None, name_uk: str = None, name_en: str = None, photo_url: str = None, is_active: int = None) -> bool:
         """Обновить переводы категории"""
         now = datetime.now().isoformat()
         updates = []
@@ -1706,6 +1837,9 @@ class Database:
         if photo_url is not None:
             updates.append("photo_url = ?")
             params.append(photo_url)
+        if is_active is not None:
+            updates.append("is_active = ?")
+            params.append(is_active)
         
         if not updates:
             return False
@@ -1727,6 +1861,30 @@ class Database:
         except Exception as e:
             logger.error(f"Failed to update category {cat_id}: {e}")
             return False
+
+    def duplicate_category_to_draft(self, cat_id: str) -> Optional[str]:
+        category = self.get_category(cat_id)
+        if not category:
+            return None
+
+        base_id = f"{cat_id}_draft"
+        candidate = base_id
+        index = 1
+        while self.get_category(candidate):
+            index += 1
+            candidate = f"{base_id}_{index}"
+
+        if self.add_category(
+            candidate,
+            f"{category.get('name_ru') or cat_id} (draft)",
+            category.get('name_uk'),
+            category.get('name_en'),
+            sort_order=category.get('sort_order', 0),
+            photo_url=category.get('photo_url'),
+            is_active=0,
+        ):
+            return candidate
+        return None
 
     def move_category(self, cat_id: str, direction: str) -> bool:
         try:
