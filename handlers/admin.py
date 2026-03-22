@@ -289,7 +289,7 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
             update,
             context,
             cat_id,
-            None if subcat_id == '__none__' else subcat_id,
+            None if subcat_id == '__none__' else ('__all__' if subcat_id == '__all__' else subcat_id),
             page=0
         )
 
@@ -299,7 +299,7 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
             update,
             context,
             cat_id,
-            None if subcat_id == '__none__' else subcat_id,
+            None if subcat_id == '__none__' else ('__all__' if subcat_id == '__all__' else subcat_id),
             page=max(0, int(page_str))
         )
 
@@ -339,7 +339,7 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
             update,
             context,
             cat_id,
-            None if subcat_id == '__none__' else subcat_id,
+            None if subcat_id == '__none__' else ('__all__' if subcat_id == '__all__' else subcat_id),
             page=0
         )
 
@@ -349,7 +349,7 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
             update,
             context,
             cat_id,
-            None if subcat_id == '__none__' else subcat_id,
+            None if subcat_id == '__none__' else ('__all__' if subcat_id == '__all__' else subcat_id),
             page=max(0, int(page_str))
         )
 
@@ -788,14 +788,13 @@ async def admin_edit_product_list(update: Update, context: ContextTypes.DEFAULT_
 
 async def admin_edit_product_category_select(update: Update, context: ContextTypes.DEFAULT_TYPE, cat_id: str):
     query = update.callback_query
-    category = db.get_category(cat_id)
-    if not category:
-        await _edit_or_send(query, "❌ Категория не найдена")
-        return
-
+    category = db.get_category(cat_id) or {}
     products = db.get_products(category=cat_id, show_all=True)
     subcategories = db.get_subcategories(cat_id, lang='ru', include_inactive=True)
     keyboard = []
+
+    if products:
+        keyboard.append([InlineKeyboardButton("Все товары", callback_data=f'admin_edit_product_subcat|{cat_id}|__all__')])
 
     if any(not (prod.get('subcategory') if isinstance(prod, dict) else None) for prod in products):
         keyboard.append([InlineKeyboardButton("Без подкатегории", callback_data=f'admin_edit_product_subcat|{cat_id}|__none__')])
@@ -830,6 +829,9 @@ async def admin_edit_product_pick_list(
     filtered = []
     for prod in products:
         prod_subcat = prod.get('subcategory') if isinstance(prod, dict) else None
+        if subcat_id == '__all__':
+            filtered.append(prod)
+            continue
         if subcat_id is None:
             if prod_subcat:
                 continue
@@ -876,7 +878,9 @@ async def admin_edit_product_pick_list(
 
     keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data=f'admin_edit_product_cat|{cat_id}')])
     section_name = "Без подкатегории"
-    if subcat_id:
+    if subcat_id == '__all__':
+        section_name = "Все товары"
+    elif subcat_id:
         subcat = db.get_subcategory(subcat_id)
         section_name = (subcat or {}).get('name_ru') or subcat_id
 
@@ -1185,14 +1189,13 @@ async def admin_delete_product_list(update: Update, context: ContextTypes.DEFAUL
 
 async def admin_delete_product_category_select(update: Update, context: ContextTypes.DEFAULT_TYPE, cat_id: str):
     query = update.callback_query
-    category = db.get_category(cat_id)
-    if not category:
-        await _edit_or_send(query, "❌ Категория не найдена")
-        return
-
+    category = db.get_category(cat_id) or {}
     products = db.get_products(category=cat_id, show_all=True)
     subcategories = db.get_subcategories(cat_id, lang='ru', include_inactive=True)
     keyboard = []
+
+    if products:
+        keyboard.append([InlineKeyboardButton("Все товары", callback_data=f'admin_delete_product_subcat|{cat_id}|__all__')])
 
     if any(not (prod.get('subcategory') if isinstance(prod, dict) else None) for prod in products):
         keyboard.append([InlineKeyboardButton("Без подкатегории", callback_data=f'admin_delete_product_subcat|{cat_id}|__none__')])
@@ -1227,6 +1230,9 @@ async def admin_delete_product_pick_list(
     filtered = []
     for prod in products:
         prod_subcat = prod.get('subcategory') if isinstance(prod, dict) else None
+        if subcat_id == '__all__':
+            filtered.append(prod)
+            continue
         if subcat_id is None:
             if prod_subcat:
                 continue
@@ -1273,7 +1279,9 @@ async def admin_delete_product_pick_list(
 
     keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data=f'admin_delete_product_cat|{cat_id}')])
     section_name = "Без подкатегории"
-    if subcat_id:
+    if subcat_id == '__all__':
+        section_name = "Все товары"
+    elif subcat_id:
         subcat = db.get_subcategory(subcat_id)
         section_name = (subcat or {}).get('name_ru') or subcat_id
 
