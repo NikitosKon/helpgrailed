@@ -21,7 +21,8 @@ async def _edit_or_send(query, text, reply_markup=None, parse_mode=None, **kwarg
             **kwargs
         )
     except Exception as e:
-        if 'There is no text in the message to edit' not in str(e):
+        error_text = str(e)
+        if 'There is no text in the message to edit' not in error_text and 'Message to edit not found' not in error_text:
             raise
         try:
             await query.message.delete()
@@ -42,17 +43,21 @@ async def _edit_or_send_with_core_photo(query, text, core_key: str, reply_markup
         return await _edit_or_send(query, text, reply_markup=reply_markup, parse_mode=parse_mode, **kwargs)
 
     try:
-        await query.message.delete()
+        sent = await query.get_bot().send_photo(
+            chat_id=query.message.chat_id,
+            photo=photo_file_id,
+            caption=text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+            **kwargs
+        )
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        return sent
     except Exception:
-        pass
-    return await query.get_bot().send_photo(
-        chat_id=query.message.chat_id,
-        photo=photo_file_id,
-        caption=text,
-        reply_markup=reply_markup,
-        parse_mode=parse_mode,
-        **kwargs
-    )
+        return await _edit_or_send(query, text, reply_markup=reply_markup, parse_mode=parse_mode, **kwargs)
 
 
 async def _send_photo_or_text(query, text, photo_source=None, reply_markup=None, parse_mode=None, **kwargs):
@@ -334,27 +339,13 @@ async def handle_product(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
     keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data=back_cb)])
     keyboard.append([InlineKeyboardButton(get_text('main_menu', user.id), callback_data='menu')])
 
-    if photo_url and os.path.exists(photo_url):
-        with open(photo_url, 'rb') as photo_file:
-            sent = await query.get_bot().send_photo(
-                chat_id=query.message.chat_id,
-                photo=photo_file,
-                caption=text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='HTML'
-            )
-        try:
-            await query.message.delete()
-        except Exception:
-            pass
-        return sent
-    else:
-        await _edit_or_send(
-            query,
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='HTML'
-        )
+    await _send_photo_or_text(
+        query,
+        text,
+        photo_source=photo_url,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )
 
 
 async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id):
