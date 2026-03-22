@@ -50,7 +50,6 @@ async def set_commands(application: Application):
         ("faq", "❓ FAQ"),
         ("help", "❓ Помощь"),
         ("language", "🌐 Выбрать язык"),
-        ("admin", "👑 Админ-панель"),
     ]
     await application.bot.set_my_commands(commands)
     logger.info("✅ Команды бота установлены")

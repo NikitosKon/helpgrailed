@@ -171,6 +171,8 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /help - справка"""
+    user = update.effective_user
+    admin_line = "• /admin - Админ-панель (для админов)\n" if db.is_admin(user.id) else ""
     text = (
         "❓ <b>Помощь</b>\n\n"
         "🔹 <b>Доступные команды:</b>\n"
@@ -181,7 +183,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /services - Услуги\n"
         "• /referral - Реферальная программа\n"
         "• /language - Сменить язык\n"
-        "• /admin - Админ-панель (для админов)\n\n"
+        f"{admin_line}\n"
         f"📞 <b>Поддержка:</b> {SUPPORT_CONTACT}\n"
         f"📢 <b>Канал:</b> @helpgrailed"
     )

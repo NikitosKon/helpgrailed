@@ -27,10 +27,27 @@ async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     if update.callback_query:
-        await update.callback_query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        query = update.callback_query
+        try:
+            if getattr(query.message, 'photo', None) or query.message.caption is not None:
+                await query.edit_message_caption(
+                    caption=text,
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+            else:
+                await query.edit_message_text(
+                    text,
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+        except Exception:
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+            await query.message.reply_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
     else:
         await update.message.reply_text(
             text,
