@@ -7,9 +7,17 @@ from keyboards.reply import categories_menu, get_text
 
 import logging
 import os
+import re
 
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_photo_caption(text: str, limit: int = 900) -> str:
+    plain = re.sub(r'<[^>]+>', '', text or '').strip()
+    if len(plain) <= limit:
+        return plain
+    return plain[: limit - 3].rstrip() + "..."
 
 
 async def _edit_or_send(query, text, reply_markup=None, parse_mode=None, **kwargs):
@@ -79,7 +87,22 @@ async def _send_photo_or_text(query, text, photo_source=None, reply_markup=None,
                         pass
                     return sent
                 except Exception:
-                    pass
+                    try:
+                        photo_file.seek(0)
+                        sent = await query.get_bot().send_photo(
+                            chat_id=query.message.chat_id,
+                            photo=photo_file,
+                            caption=_safe_photo_caption(text),
+                            reply_markup=reply_markup,
+                            **kwargs
+                        )
+                        try:
+                            await query.message.delete()
+                        except Exception:
+                            pass
+                        return sent
+                    except Exception:
+                        pass
         try:
             sent = await query.get_bot().send_photo(
                 chat_id=query.message.chat_id,
@@ -95,7 +118,21 @@ async def _send_photo_or_text(query, text, photo_source=None, reply_markup=None,
                 pass
             return sent
         except Exception:
-            pass
+            try:
+                sent = await query.get_bot().send_photo(
+                    chat_id=query.message.chat_id,
+                    photo=photo_source,
+                    caption=_safe_photo_caption(text),
+                    reply_markup=reply_markup,
+                    **kwargs
+                )
+                try:
+                    await query.message.delete()
+                except Exception:
+                    pass
+                return sent
+            except Exception:
+                pass
 
     return await _edit_or_send(
         query,
