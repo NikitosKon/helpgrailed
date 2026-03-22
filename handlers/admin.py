@@ -92,6 +92,8 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
         await admin_home_menu(update, context)
     elif data == 'admin_home_edit_text':
         await admin_home_edit_text_start(update, context)
+    elif data.startswith('admin_home_edit_text_'):
+        await admin_home_edit_text_lang_start(update, context, data.replace('admin_home_edit_text_', '', 1))
     elif data == 'admin_home_edit_photo':
         await admin_home_edit_photo_start(update, context)
     elif data == 'admin_home_remove_photo':
@@ -2702,20 +2704,45 @@ async def admin_home_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def admin_home_edit_text_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    user = query.from_user
     home = db.get_home_content()
-
-    context.user_data['home_text_ru'] = home.get('text_ru')
-    context.user_data['home_text_uk'] = home.get('text_uk')
-    context.user_data['home_text_en'] = home.get('text_en')
-    db.set_pending_action(user.id, 'admin_home_text_ru')
 
     await _edit_or_send(query, 
         "📝 <b>Редактирование текстов главной страницы</b>\n\n"
-        "Введите текст на русском.\n"
+        f"🇷🇺 RU: {'есть' if home.get('text_ru') else 'нет'}\n"
+        f"🇺🇦 UK: {'есть' if home.get('text_uk') else 'нет'}\n"
+        f"🇬🇧 EN: {'есть' if home.get('text_en') else 'нет'}\n\n"
+        "Выберите язык, который хотите изменить:",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🇷🇺 Русский", callback_data='admin_home_edit_text_ru')],
+            [InlineKeyboardButton("🇺🇦 Українська", callback_data='admin_home_edit_text_uk')],
+            [InlineKeyboardButton("🇬🇧 English", callback_data='admin_home_edit_text_en')],
+            [InlineKeyboardButton("◀️ Назад", callback_data='admin_home_menu')],
+        ]),
+        parse_mode='HTML'
+    )
+
+
+async def admin_home_edit_text_lang_start(update: Update, context: ContextTypes.DEFAULT_TYPE, lang: str):
+    query = update.callback_query
+    user = query.from_user
+    if lang not in {'ru', 'uk', 'en'}:
+        await query.answer("Неизвестный язык", show_alert=True)
+        return
+
+    home = db.get_home_content()
+    current_text = home.get(f'text_{lang}') or ''
+    lang_label = {'ru': 'русском', 'uk': 'украинском', 'en': 'английском'}[lang]
+
+    db.set_pending_action(user.id, f'admin_home_text_{lang}')
+    await _edit_or_send(
+        query,
+        "📝 <b>Редактирование текста главной страницы</b>\n\n"
+        f"Язык: <b>{lang.upper()}</b>\n\n"
+        f"Текущее значение:\n<code>{html.escape(current_text[:800] or '—')}</code>\n\n"
+        f"Введите новый текст на {lang_label}.\n"
         "Можно использовать <code>{name}</code> для имени пользователя.\n"
         "Или отправьте /skip, чтобы оставить текущий.",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data='admin_home_menu')]]),
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_home_edit_text')]]),
         parse_mode='HTML'
     )
 
@@ -2723,40 +2750,27 @@ async def admin_home_edit_text_start(update: Update, context: ContextTypes.DEFAU
 async def handle_admin_home_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, text: str):
     user = update.effective_user
     text = text.strip()
-
-    if action == 'admin_home_text_ru':
-        if text != '/skip':
-            context.user_data['home_text_ru'] = text
-        db.set_pending_action(user.id, 'admin_home_text_uk')
-        await update.message.reply_text("Введите текст на украинском (или /skip):")
-        return
-
-    if action == 'admin_home_text_uk':
-        if text != '/skip':
-            context.user_data['home_text_uk'] = text
-        db.set_pending_action(user.id, 'admin_home_text_en')
-        await update.message.reply_text("Введите текст на английском (или /skip):")
-        return
-
-    if action == 'admin_home_text_en':
-        if text != '/skip':
-            context.user_data['home_text_en'] = text
-
-        ok = db.save_home_content({
-            'text_ru': context.user_data.get('home_text_ru'),
-            'text_uk': context.user_data.get('home_text_uk'),
-            'text_en': context.user_data.get('home_text_en'),
-        })
+    lang = action.replace('admin_home_text_', '', 1)
+    if lang not in {'ru', 'uk', 'en'}:
         db.clear_pending_action(user.id)
-        context.user_data.clear()
+        return
 
-        if ok:
-            await update.message.reply_text(
-                "✅ Тексты главной страницы обновлены.",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_home_menu')]])
-            )
-        else:
-            await update.message.reply_text("❌ Не удалось сохранить тексты главной страницы.")
+    db.clear_pending_action(user.id)
+    if text == '/skip':
+        await update.message.reply_text(
+            "Изменение текста отменено.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_home_edit_text')]])
+        )
+        return
+
+    ok = db.save_home_content({f'text_{lang}': text})
+    if ok:
+        await update.message.reply_text(
+            f"✅ Текст главной страницы для {lang.upper()} обновлён.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_home_edit_text')]])
+        )
+    else:
+        await update.message.reply_text("❌ Не удалось сохранить текст главной страницы.")
 
 
 async def admin_home_edit_photo_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
