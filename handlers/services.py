@@ -217,9 +217,10 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
         cat_name = categories.get(category, category)
 
         if not items:
-            await _edit_or_send(
+            await _send_photo_or_text(
                 query,
                 f"{get_text('no_items', user.id)}\n\n{cat_name}",
+                photo_source=category_photo,
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(get_text('back', user.id), callback_data='services')]])
             )
             return
