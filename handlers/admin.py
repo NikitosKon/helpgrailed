@@ -46,7 +46,7 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
 
     logger.info(f"🔍 ADMIN CALLBACK: {data} from user {user.id}")
 
-    if user.id not in ADMIN_IDS:
+    if not db.is_admin(user.id):
         await query.answer("⛔ Доступ запрещен", show_alert=True)
         return
 
@@ -1350,11 +1350,7 @@ async def admin_order_update_status(update: Update, context: ContextTypes.DEFAUL
 async def admin_manage_admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
 
-    try:
-        with open('admins.json', 'r') as f:
-            current_admins = json.load(f)
-    except FileNotFoundError:
-        current_admins = ADMIN_IDS.copy()
+    current_admins = db.get_admin_ids()
 
     admins_list = ""
     for i, admin_id in enumerate(current_admins, 1):
@@ -1399,11 +1395,7 @@ async def admin_add_admin_start(update: Update, context: ContextTypes.DEFAULT_TY
 async def admin_remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
 
-    try:
-        with open('admins.json', 'r') as f:
-            current_admins = json.load(f)
-    except FileNotFoundError:
-        current_admins = ADMIN_IDS.copy()
+    current_admins = db.get_admin_ids()
 
     if len(current_admins) <= 1:
         await query.answer("❌ Нельзя удалить последнего админа!", show_alert=True)
@@ -1414,7 +1406,7 @@ async def admin_remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if admin_id == query.from_user.id:
             continue
         user = db.get_user(admin_id)
-        username = f"@{user[1]}" if user and len(user) > 1 and user[1] else f"ID: {admin_id}"
+        username = f"@{user['username']}" if user and user.get('username') else f"ID: {admin_id}"
         keyboard.append([InlineKeyboardButton(f"❌ {username}", callback_data=f'admin_remove_{admin_id}')])
 
     keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_admins')])
@@ -1432,20 +1424,15 @@ async def admin_remove_confirm(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.answer("❌ Нельзя удалить самого себя!", show_alert=True)
         return
 
-    try:
-        with open('admins.json', 'r') as f:
-            current_admins = json.load(f)
-    except FileNotFoundError:
-        current_admins = ADMIN_IDS.copy()
+    current_admins = db.get_admin_ids()
 
     if admin_id not in current_admins:
         await query.answer("❌ Администратор не найден!", show_alert=True)
         return
 
-    current_admins.remove(admin_id)
-
-    with open('admins.json', 'w') as f:
-        json.dump(current_admins, f)
+    if not db.remove_admin_id(admin_id):
+        await query.answer("❌ Не удалось удалить администратора", show_alert=True)
+        return
 
     await _edit_or_send(query, 
         f"✅ Администратор с ID {admin_id} удален!",

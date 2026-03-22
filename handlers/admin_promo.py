@@ -12,7 +12,7 @@ async def admin_promo_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
     
-    if user.id not in ADMIN_IDS:
+    if not db.is_admin(user.id):
         await query.answer("⛔ Доступ запрещен", show_alert=True)
         return
     

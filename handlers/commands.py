@@ -196,7 +196,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /admin - админ-панель"""
     user = update.effective_user
     
-    if user.id not in ADMIN_IDS:
+    if not db.is_admin(user.id):
         await update.message.reply_text("⛔ У вас нет доступа к админ-панели")
         return
     
@@ -219,7 +219,7 @@ async def fix_categories_command(update: Update, context: ContextTypes.DEFAULT_T
     """Фикс категорий с переводами (только для админов)"""
     user = update.effective_user
     
-    if user.id not in ADMIN_IDS:
+    if not db.is_admin(user.id):
         await update.message.reply_text("⛔ Эта команда только для админов")
         return
     
@@ -291,7 +291,7 @@ async def check_categories_command(update: Update, context: ContextTypes.DEFAULT
     """Проверка категорий в БД (только для админов)"""
     user = update.effective_user
     
-    if user.id not in ADMIN_IDS:
+    if not db.is_admin(user.id):
         return
     
     # Проверяем через config
@@ -339,7 +339,7 @@ async def force_add_categories(update: Update, context: ContextTypes.DEFAULT_TYP
     """Принудительное добавление категорий напрямую в БД"""
     user = update.effective_user
     
-    if user.id not in ADMIN_IDS:
+    if not db.is_admin(user.id):
         return
     
     categories = [

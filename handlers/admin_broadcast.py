@@ -162,7 +162,7 @@ async def admin_broadcast_menu(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     user = query.from_user
 
-    if user.id not in ADMIN_IDS:
+    if not db.is_admin(user.id):
         await query.answer("⛔ Доступ запрещен", show_alert=True)
         return
 

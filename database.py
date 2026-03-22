@@ -1655,6 +1655,59 @@ class Database:
             logger.error(f"Failed to encode JSON setting {key}: {e}")
             return False
 
+    def get_admin_ids(self) -> list[int]:
+        raw = self.get_setting_json('admin_ids', default=ADMIN_IDS)
+        if not isinstance(raw, list):
+            return list(ADMIN_IDS)
+
+        normalized: list[int] = []
+        for value in raw:
+            try:
+                admin_id = int(value)
+            except Exception:
+                continue
+            if admin_id not in normalized:
+                normalized.append(admin_id)
+
+        return normalized or list(ADMIN_IDS)
+
+    def save_admin_ids(self, admin_ids: list[int]) -> bool:
+        normalized: list[int] = []
+        for value in admin_ids:
+            try:
+                admin_id = int(value)
+            except Exception:
+                continue
+            if admin_id not in normalized:
+                normalized.append(admin_id)
+
+        if not normalized:
+            return False
+
+        return self.set_setting_json('admin_ids', normalized)
+
+    def is_admin(self, user_id: int) -> bool:
+        try:
+            return int(user_id) in self.get_admin_ids()
+        except Exception:
+            return False
+
+    def add_admin_id(self, user_id: int) -> bool:
+        admin_ids = self.get_admin_ids()
+        if user_id in admin_ids:
+            return True
+        admin_ids.append(int(user_id))
+        return self.save_admin_ids(admin_ids)
+
+    def remove_admin_id(self, user_id: int) -> bool:
+        admin_ids = self.get_admin_ids()
+        if user_id not in admin_ids:
+            return True
+        remaining = [admin_id for admin_id in admin_ids if admin_id != int(user_id)]
+        if not remaining:
+            return False
+        return self.save_admin_ids(remaining)
+
     def get_home_content(self) -> dict:
         data = self.get_setting_json('home_content', default={}) or {}
         return {

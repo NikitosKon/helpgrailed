@@ -364,9 +364,17 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if action == 'admin_add_admin':
         try:
             new_id = int(text)
-            await message.reply_text(f"Добавлен админ с ID {new_id} (заглушка)")
+            if db.add_admin_id(new_id):
+                await message.reply_text(
+                    f"✅ Администратор добавлен.\n\n"
+                    f"ID: <code>{new_id}</code>",
+                    parse_mode='HTML'
+                )
+            else:
+                await message.reply_text("❌ Не удалось добавить администратора.")
         except ValueError:
             await message.reply_text("Пожалуйста, введите числовой Telegram ID.")
+            return
         db.clear_pending_action(user.id)
         return
 

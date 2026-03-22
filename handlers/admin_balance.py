@@ -79,7 +79,7 @@ def _user_actions_keyboard(user_id: int):
 async def admin_balance_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
-    if user.id not in ADMIN_IDS:
+    if not db.is_admin(user.id):
         await query.answer("Доступ запрещен", show_alert=True)
         return
 
