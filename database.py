@@ -1960,8 +1960,10 @@ class Database:
             logger.error(f"Failed to delete category: {e}")
             return False, str(e)
     
-    def purchase(self, user_id: int, product_id: int) -> Tuple[bool, str, Optional[dict]]:
+    def purchase(self, user_id: int, product_id: int, quantity: int = 1) -> Tuple[bool, str, Optional[dict]]:
         try:
+            if quantity <= 0:
+                raise Exception("Неверное количество")
             self.execute("BEGIN TRANSACTION")
             
             product = self.execute(
@@ -1976,6 +1978,7 @@ class Database:
             product = dict(product[0])
             price = product['price_usd']
             stock = product['stock']
+            total_price = price * quantity
             
             user = self.execute(
                 "SELECT balance FROM users WHERE user_id = ?", 
@@ -1987,28 +1990,28 @@ class Database:
                 raise Exception("❌ Недостаточно средств")
             
             user_balance = user[0][0] if not self.use_postgres else user[0]['balance']
-            if user_balance < price:
+            if user_balance < total_price:
                 raise Exception("❌ Недостаточно средств")
             
-            if stock == 0:
+            if stock == 0 or (stock > 0 and stock < quantity):
                 raise Exception("❌ Товар закончился")
             
             self.execute(
                 "UPDATE users SET balance = balance - ? WHERE user_id = ?",
-                (price, user_id),
+                (total_price, user_id),
                 commit=False
             )
             
             if stock > 0:
                 self.execute(
-                    "UPDATE products SET stock = stock - 1, sold_count = sold_count + 1 WHERE id = ?",
-                    (product_id,),
+                    "UPDATE products SET stock = stock - ?, sold_count = sold_count + ? WHERE id = ?",
+                    (quantity, quantity, product_id),
                     commit=False
                 )
             else:
                 self.execute(
-                    "UPDATE products SET sold_count = sold_count + 1 WHERE id = ?",
-                    (product_id,),
+                    "UPDATE products SET sold_count = sold_count + ? WHERE id = ?",
+                    (quantity, product_id),
                     commit=False
                 )
             
@@ -2017,11 +2020,11 @@ class Database:
                 """INSERT INTO transactions 
                    (user_id, amount, type, product_id, status, completed_at, currency) 
                    VALUES (?, ?, 'purchase', ?, 'completed', ?, 'USD')""",
-                (user_id, price, product_id, now),
+                (user_id, total_price, product_id, now),
                 commit=False
             )
             
-            self.add_purchase_history(user_id, product_id, product['name'], price)
+            self.add_purchase_history(user_id, product_id, f"{product['name']} x{quantity}", total_price)
             
             referrer = self.execute(
                 "SELECT referrer_id FROM users WHERE user_id = ?", 
@@ -2036,7 +2039,7 @@ class Database:
                     referrer_id = referrer[0][0]
                     
                 if referrer_id:
-                    bonus = price * REFERRAL_BONUS
+                    bonus = total_price * REFERRAL_BONUS
                     
                     self.execute(
                         "UPDATE users SET balance = balance + ? WHERE user_id = ?",
@@ -2057,14 +2060,14 @@ class Database:
                         """INSERT INTO transactions 
                            (user_id, amount, type, status, completed_at, currency, metadata) 
                            VALUES (?, ?, 'referral', 'completed', ?, 'USD', ?)""",
-                        (referrer_id, bonus, now, json.dumps({'referral_id': user_id})),
+                        (referrer_id, bonus, now, json.dumps({'referral_id': user_id, 'quantity': quantity})),
                         commit=False
                     )
             
             self.conn.commit()
             self.invalidate_product_cache(product_id)
             
-            logger.info(f"Purchase successful: user {user_id}, product {product_id}")
+            logger.info(f"Purchase successful: user {user_id}, product {product_id}, quantity {quantity}")
             return True, "✅ Покупка успешно оформлена!", product
             
         except Exception as e:

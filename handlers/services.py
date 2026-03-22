@@ -363,10 +363,14 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
         product_name = prod.get('name', 'Товар')
         product_price = prod.get('price_usd', 0)
         product_category = prod.get('category', '')
+        product_subcategory = prod.get('subcategory')
+        product_stock = prod.get('stock', -1)
     else:
         product_name = prod[2]
         product_price = prod[3]
         product_category = prod[1]
+        product_subcategory = None
+        product_stock = prod[5]
 
     if product_price is not None and product_price < 0:
         await _edit_or_send(
@@ -376,15 +380,62 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
         )
         return
 
-    success, message, product_data = db.purchase(user.id, product_id)
+    max_qty = 10 if product_stock < 0 else max(1, min(product_stock, 10))
+    keyboard = []
+    row = []
+    for qty in range(1, max_qty + 1):
+        row.append(InlineKeyboardButton(str(qty), callback_data=f'buyqty_{product_id}_{qty}'))
+        if len(row) == 5:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data=f'prod_{product_id}')])
+    keyboard.append([InlineKeyboardButton(get_text('main_menu', user.id), callback_data='menu')])
+
+    await _edit_or_send(
+        query,
+        f"<b>{product_name}</b>\n\n"
+        f"💰 Цена за 1 шт: ${product_price:.2f}\n"
+        f"📦 В наличии: {_stock_str(product_stock)}\n\n"
+        "Выберите количество для покупки:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )
+
+
+async def handle_buy_quantity(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int, quantity: int):
+    query = update.callback_query
+    user = query.from_user
+
+    user_data = db.get_user(user.id) or {}
+    user_lang = user_data.get('language', 'ru')
+    prod = db.get_product(product_id, lang=user_lang)
+    if not prod:
+        await query.answer("❌ Товар не найден", show_alert=True)
+        return
+
+    if isinstance(prod, dict):
+        product_name = prod.get('name', 'Товар')
+        product_price = prod.get('price_usd', 0)
+        product_category = prod.get('category', '')
+        product_subcategory = prod.get('subcategory')
+    else:
+        product_name = prod[2]
+        product_price = prod[3]
+        product_category = prod[1]
+        product_subcategory = None
+
+    success, message, product_data = db.purchase(user.id, product_id, quantity=quantity)
 
     if not success:
+        total_price = product_price * quantity
         if "Недостаточно средств" in message:
             balance = db.get_balance(user.id)
-            need = product_price - balance
+            need = total_price - balance
             text = (
                 f"❌ Недостаточно средств\n\n"
-                f"💰 Нужно: ${product_price:.2f}\n"
+                f"💰 Нужно: ${total_price:.2f}\n"
                 f"💳 Ваш баланс: ${balance:.2f}\n"
                 f"❌ Не хватает: ${need:.2f}"
             )
@@ -394,7 +445,8 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
             ]
         elif "закончился" in message:
             text = "❌ Товар закончился. Попробуйте другой товар."
-            keyboard = [[InlineKeyboardButton(get_text('back', user.id), callback_data=f'cat_{product_category}')]]
+            back_cb = f"subcat|{product_category}|{product_subcategory}" if product_subcategory else f'cat_{product_category}'
+            keyboard = [[InlineKeyboardButton(get_text('back', user.id), callback_data=back_cb)]]
         else:
             text = f"❌ Ошибка: {message}"
             keyboard = [[InlineKeyboardButton(get_text('back', user.id), callback_data='services')]]
@@ -415,7 +467,8 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
                 f"👤 Пользователь: @{user.username or 'нет'}\n"
                 f"🆔 ID: <code>{user.id}</code>\n"
                 f"📦 Товар: {product_name}\n"
-                f"💰 Сумма: ${product_price:.2f}\n\n"
+                f"🔢 Количество: {quantity}\n"
+                f"💰 Сумма: ${product_price * quantity:.2f}\n\n"
                 f"🔔 Свяжитесь с покупателем!",
                 parse_mode='HTML'
             )
@@ -425,7 +478,8 @@ async def handle_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, product
     text = (
         f"✅ <b>{get_text('purchase_success', user.id)}</b>\n\n"
         f"📦 Товар: {product_name}\n"
-        f"💰 Списано: ${product_price:.2f}\n\n"
+        f"🔢 Количество: {quantity}\n"
+        f"💰 Списано: ${product_price * quantity:.2f}\n\n"
         f"🔔 Напишите {SUPPORT_CONTACT} для получения услуги.\n"
         f"🆔 Ваш ID: <code>{user.id}</code>"
     )

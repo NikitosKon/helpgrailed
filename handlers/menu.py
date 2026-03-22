@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes
 
 from database import db
 from handlers.start import start_command
-from handlers.services import handle_services, handle_category, handle_subcategory, handle_product, handle_buy
+from handlers.services import handle_services, handle_category, handle_subcategory, handle_product, handle_buy, handle_buy_quantity
 from handlers.payments import (
     handle_balance, handle_deposit, handle_withdraw,
     handle_currency_selection, handle_amount_selection,
@@ -88,6 +88,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await handle_buy(update, context, product_id)
         except ValueError:
             await query.edit_message_text("Некорректный ID товара")
+    elif data.startswith('buyqty_'):
+        try:
+            _, product_id, quantity = data.split('_', 2)
+            await handle_buy_quantity(update, context, int(product_id), int(quantity))
+        except ValueError:
+            await query.edit_message_text("Некорректное количество")
 
     # Баланс и платежи
     elif data == 'balance':
