@@ -280,6 +280,29 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
     elif data == 'admin_edit_product':
         await admin_edit_product_list(update, context)
 
+    elif data.startswith('admin_edit_product_cat|'):
+        await admin_edit_product_category_select(update, context, data.split('|', 1)[1])
+
+    elif data.startswith('admin_edit_product_subcat|'):
+        _, cat_id, subcat_id = data.split('|', 2)
+        await admin_edit_product_pick_list(
+            update,
+            context,
+            cat_id,
+            None if subcat_id == '__none__' else subcat_id,
+            page=0
+        )
+
+    elif data.startswith('admin_edit_product_page|'):
+        _, cat_id, subcat_id, page_str = data.split('|', 3)
+        await admin_edit_product_pick_list(
+            update,
+            context,
+            cat_id,
+            None if subcat_id == '__none__' else subcat_id,
+            page=max(0, int(page_str))
+        )
+
     elif data.startswith('admin_edit_product_field_'):
         payload = data.replace('admin_edit_product_field_', '', 1)
         try:
@@ -758,13 +781,91 @@ async def handle_admin_add_product_input(update: Update, context: ContextTypes.D
 async def admin_edit_product_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
 
-    products = db.get_products(show_all=True)
-    if not products:
-        await _edit_or_send(query, "📭 Нет товаров для редактирования")
+    categories = db.get_categories('ru', include_inactive=True)
+    if not categories:
+        await _edit_or_send(query, "📭 Нет категорий для редактирования товаров")
         return
 
+    keyboard = [
+        [InlineKeyboardButton(name, callback_data=f'admin_edit_product_cat|{cat_id}')]
+        for cat_id, name in categories.items()
+    ]
+    keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_products')])
+
+    await _edit_or_send(query,
+        "Выберите категорию товара:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def admin_edit_product_category_select(update: Update, context: ContextTypes.DEFAULT_TYPE, cat_id: str):
+    query = update.callback_query
+    category = db.get_category(cat_id)
+    if not category:
+        await _edit_or_send(query, "❌ Категория не найдена")
+        return
+
+    products = db.get_products(category=cat_id, show_all=True)
+    subcategories = db.get_subcategories(cat_id, lang='ru', include_inactive=True)
     keyboard = []
-    for prod in products[:10]:
+
+    if any(not (prod.get('subcategory') if isinstance(prod, dict) else None) for prod in products):
+        keyboard.append([InlineKeyboardButton("Без подкатегории", callback_data=f'admin_edit_product_subcat|{cat_id}|__none__')])
+
+    for subcat_id, subcat_name in subcategories.items():
+        keyboard.append([InlineKeyboardButton(subcat_name, callback_data=f'admin_edit_product_subcat|{cat_id}|{subcat_id}')])
+
+    if not keyboard:
+        await admin_edit_product_pick_list(update, context, cat_id, None, page=0)
+        return
+
+    keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_edit_product')])
+    title = category.get('name_ru') or category.get('name') or cat_id
+    await _edit_or_send(
+        query,
+        f"Выберите подкатегорию в <b>{html.escape(title)}</b>:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )
+
+
+async def admin_edit_product_pick_list(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    cat_id: str,
+    subcat_id: str | None,
+    page: int = 0
+):
+    query = update.callback_query
+    per_page = 12
+    products = db.get_products(category=cat_id, show_all=True)
+    filtered = []
+    for prod in products:
+        prod_subcat = prod.get('subcategory') if isinstance(prod, dict) else None
+        if subcat_id is None:
+            if prod_subcat:
+                continue
+        elif prod_subcat != subcat_id:
+            continue
+        filtered.append(prod)
+
+    if not filtered:
+        await _edit_or_send(
+            query,
+            "📭 В этом разделе нет товаров для редактирования.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("◀️ Назад", callback_data=f'admin_edit_product_cat|{cat_id}')],
+            ])
+        )
+        return
+
+    total_pages = (len(filtered) - 1) // per_page + 1
+    page = max(0, min(page, total_pages - 1))
+    start = page * per_page
+    page_items = filtered[start:start + per_page]
+
+    keyboard = []
+    for prod in page_items:
         if isinstance(prod, dict):
             pid = prod.get('id')
             name = prod.get('name', 'Без названия')
@@ -773,15 +874,32 @@ async def admin_edit_product_list(update: Update, context: ContextTypes.DEFAULT_
             pid = prod[0]
             name = prod[2]
             is_active = prod[7] if len(prod) > 7 else 1
-        
         status = "✅" if is_active else "📝"
         keyboard.append([InlineKeyboardButton(f"{status} {name}", callback_data=f'admin_edit_{pid}')])
-    
-    keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_products')])
 
-    await _edit_or_send(query, 
-        "Выберите товар для редактирования:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+    nav = []
+    subcat_token = subcat_id if subcat_id is not None else '__none__'
+    if page > 0:
+        nav.append(InlineKeyboardButton("◀️", callback_data=f'admin_edit_product_page|{cat_id}|{subcat_token}|{page - 1}'))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton("▶️", callback_data=f'admin_edit_product_page|{cat_id}|{subcat_token}|{page + 1}'))
+    if nav:
+        keyboard.append(nav)
+
+    keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data=f'admin_edit_product_cat|{cat_id}')])
+    section_name = "Без подкатегории"
+    if subcat_id:
+        subcat = db.get_subcategory(subcat_id)
+        section_name = (subcat or {}).get('name_ru') or subcat_id
+
+    await _edit_or_send(
+        query,
+        f"Выберите товар для редактирования:\n\n"
+        f"Категория: <code>{html.escape(cat_id)}</code>\n"
+        f"Подкатегория: <code>{html.escape(section_name)}</code>\n"
+        f"Страница {page + 1} из {total_pages}",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
     )
 
 
