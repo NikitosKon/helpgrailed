@@ -8,7 +8,7 @@ from typing import Optional, List, Dict, Any, Tuple
 import random
 import string
 
-from config import DB_FILE, REFERRAL_BONUS
+from config import DB_FILE, REFERRAL_BONUS, ADMIN_IDS
 from utils.translator import build_i18n_triplet
 
 logger = logging.getLogger(__name__)
@@ -1657,11 +1657,9 @@ class Database:
 
     def get_admin_ids(self) -> list[int]:
         raw = self.get_setting_json('admin_ids', default=ADMIN_IDS)
-        if not isinstance(raw, list):
-            return list(ADMIN_IDS)
-
         normalized: list[int] = []
-        for value in raw:
+        values = raw if isinstance(raw, list) else []
+        for value in list(ADMIN_IDS) + values:
             try:
                 admin_id = int(value)
             except Exception:

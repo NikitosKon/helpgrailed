@@ -67,7 +67,7 @@ def main_menu(user_id):
         else:
             keyboard.append([InlineKeyboardButton(label, callback_data=target)])
     
-    if user_id in ADMIN_IDS:
+    if db.is_admin(user_id):
         keyboard.append([InlineKeyboardButton("👑 Админ-панель", callback_data='admin')])
     
     return InlineKeyboardMarkup(keyboard)
