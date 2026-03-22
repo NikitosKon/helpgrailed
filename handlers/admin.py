@@ -1092,15 +1092,60 @@ async def admin_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         total_users = stats[0] if stats else 0
         total_balance = stats[1] or 0
+
+    users = db.export_users()
+    normalized_users = []
+    for row in users:
+        if db.use_postgres:
+            item = dict(row)
+        else:
+            item = {
+                'user_id': row[0],
+                'username': row[1],
+                'balance': row[2],
+                'registered_date': row[3],
+                'last_active': row[4],
+            }
+        normalized_users.append(item)
+
+    normalized_users.sort(
+        key=lambda u: (
+            str(u.get('registered_date') or ''),
+            int(u.get('user_id') or 0),
+        ),
+        reverse=True
+    )
     
     text = (
         f"👥 <b>Пользователи</b>\n\n"
         f"Всего: {total_users}\n"
-        f"Общий баланс: ${total_balance:.2f}\n\n"
-        f"Функции в разработке..."
+        f"Общий баланс: ${total_balance:.2f}\n"
+        f"Средний баланс: ${((total_balance / total_users) if total_users else 0):.2f}\n\n"
     )
+
+    if not normalized_users:
+        text += "Пользователей пока нет."
+    else:
+        text += "<b>Список пользователей:</b>\n\n"
+        for user in normalized_users[:50]:
+            username = f"@{user['username']}" if user.get('username') else '—'
+            reg_date = str(user.get('registered_date') or '—')[:19]
+            last_active = str(user.get('last_active') or '—')[:19]
+            balance = float(user.get('balance') or 0)
+            text += (
+                f"• <code>{user.get('user_id')}</code> | {html.escape(username)}\n"
+                f"  Баланс: ${balance:.2f}\n"
+                f"  Регистрация: {html.escape(reg_date)}\n"
+                f"  Активность: {html.escape(last_active)}\n\n"
+            )
+
+        if len(normalized_users) > 50:
+            text += f"… и ещё {len(normalized_users) - 50} пользователей"
     
-    keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin')]]
+    keyboard = [
+        [InlineKeyboardButton("💰 Управление балансами", callback_data='admin_balance_menu')],
+        [InlineKeyboardButton("◀️ Назад", callback_data='admin')],
+    ]
     await _edit_or_send(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 
