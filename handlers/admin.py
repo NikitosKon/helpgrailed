@@ -156,7 +156,7 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
     elif data.startswith('admin_subcat_field_'):
         payload = data.replace('admin_subcat_field_', '', 1)
         parsed = False
-        for field in ('parent', 'name_ru', 'name_uk', 'name_en'):
+        for field in ('parent', 'name_ru', 'name_uk', 'name_en', 'photo'):
             suffix = f'_{field}'
             if payload.endswith(suffix):
                 subcat_id = payload[:-len(suffix)]
