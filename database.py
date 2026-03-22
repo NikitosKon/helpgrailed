@@ -476,6 +476,10 @@ class Database:
                     )""",
                     commit=True
                 )
+                self.execute(
+                    "ALTER TABLE subcategories ADD COLUMN IF NOT EXISTS is_active INTEGER DEFAULT 1",
+                    commit=True
+                )
             else:
                 cols = self.execute("PRAGMA table_info(categories)", fetch=True) or []
                 col_names = {row[1] for row in cols}
