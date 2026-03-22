@@ -324,6 +324,8 @@ async def handle_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
             await admin_edit_product_field_start(update, context, int(pid_str), field)
         except ValueError:
             await query.answer("Некорректный ID товара", show_alert=True)
+    elif data.startswith('admin_edit_product_photo_remove_'):
+        await admin_remove_product_photo(update, context, int(data.replace('admin_edit_product_photo_remove_', '')))
 
     elif data.startswith('admin_product_toggle_'):
         await admin_toggle_product_status(update, context, int(data.replace('admin_product_toggle_', '')))
@@ -993,6 +995,9 @@ def _build_product_edit_keyboard(product_id: int):
             InlineKeyboardButton("🖼 Фото", callback_data=f'admin_edit_product_field_{product_id}_photo'),
         ],
         [
+            InlineKeyboardButton("🗑 Удалить фото", callback_data=f'admin_edit_product_photo_remove_{product_id}'),
+        ],
+        [
             InlineKeyboardButton(multi_label, callback_data=f'admin_product_multibuy_{product_id}'),
         ],
         [
@@ -1164,6 +1169,21 @@ async def admin_toggle_product_status(update: Update, context: ContextTypes.DEFA
         await admin_edit_product_start(update, context, product_id)
     else:
         await query.answer("Не удалось изменить статус", show_alert=True)
+
+
+async def admin_remove_product_photo(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int):
+    query = update.callback_query
+    prod = db.get_product(product_id)
+    if not prod:
+        await query.answer("Товар не найден", show_alert=True)
+        return
+
+    ok = db.update_product(product_id, input_lang='auto', photo_url='', is_active=0)
+    if ok:
+        await query.answer("Фото товара удалено", show_alert=False)
+        await admin_edit_product_start(update, context, product_id)
+    else:
+        await query.answer("Не удалось удалить фото", show_alert=True)
 
 
 async def admin_duplicate_product(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id: int):
