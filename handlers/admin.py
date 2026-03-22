@@ -2339,13 +2339,14 @@ async def handle_admin_photo_input(update: Update, context: ContextTypes.DEFAULT
         return
 
     photo = update.message.photo[-1]
-    photo_path = await download_telegram_photo(photo.file_id, context)
-    if action not in {'admin_add_category_photo'} and not action.startswith('admin_edit_category_photo_') and not photo_path:
+    photo_file_id = photo.file_id
+    photo_path = await download_telegram_photo(photo_file_id, context)
+    if action not in {'admin_add_category_photo'} and not action.startswith('admin_edit_category_photo_') and not photo_file_id:
         await update.message.reply_text("❌ Не удалось сохранить фото. Попробуйте ещё раз.")
         return
 
     if action == 'admin_add_product_photo_waiting':
-        context.user_data['add_prod_photo_url'] = photo_path
+        context.user_data['add_prod_photo_url'] = photo_file_id
         db.set_pending_action(user.id, 'admin_add_product_stock')
         await update.message.reply_text(
             "✅ Фото сохранено\n\nВведите количество на складе:\n• Число (например: 10)\n• -1 для бесконечного запаса"
@@ -2366,7 +2367,7 @@ async def handle_admin_photo_input(update: Update, context: ContextTypes.DEFAULT
             context.user_data.clear()
             return
 
-        if db.update_product(product_id, input_lang='auto', photo_url=photo_path, is_active=0):
+        if db.update_product(product_id, input_lang='auto', photo_url=photo_file_id, is_active=0):
             await update.message.reply_text(
                 "✅ Фото товара обновлено и сохранено в черновик!",
                 reply_markup=InlineKeyboardMarkup([
@@ -2410,7 +2411,7 @@ async def handle_admin_photo_input(update: Update, context: ContextTypes.DEFAULT
             db.clear_pending_action(user.id)
             return
 
-        if db.update_subcategory(subcat_id, photo_url=photo_path, is_active=0):
+        if db.update_subcategory(subcat_id, photo_url=photo_file_id, is_active=0):
             await update.message.reply_text(
                 "✅ Фото подкатегории обновлено и сохранено в черновик!",
                 reply_markup=InlineKeyboardMarkup([
