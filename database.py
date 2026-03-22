@@ -1753,9 +1753,12 @@ class Database:
         default = {
             'services': {'ru': '🛒 Услуги', 'uk': '🛒 Послуги', 'en': '🛒 Services'},
             'balance': {'ru': '💰 Баланс: ${balance}', 'uk': '💰 Баланс: ${balance}', 'en': '💰 Balance: ${balance}'},
+            'deposit': {'ru': 'Deposit', 'uk': 'Deposit', 'en': 'Deposit'},
+            'withdraw': {'ru': 'Withdraw', 'uk': 'Withdraw', 'en': 'Withdraw'},
             'profile': {'ru': '👤 Профиль', 'uk': '👤 Профіль', 'en': '👤 Profile'},
             'referral': {'ru': '🔗 Рефералка', 'uk': '🔗 Рефералка', 'en': '🔗 Referral'},
             'transfer': {'ru': '💸 Перевести средства', 'uk': '💸 Переказати кошти', 'en': '💸 Transfer funds'},
+            'promo_code': {'ru': 'Promo code', 'uk': 'Promo code', 'en': 'Promo code'},
             'support': {'ru': '🆘 Тех поддержка', 'uk': '🆘 Тех підтримка', 'en': '🆘 Support'},
         }
         data = self.get_setting_json('main_menu_core', default=default) or {}

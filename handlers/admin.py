@@ -3143,9 +3143,12 @@ async def admin_menu_core_menu(update: Update, context: ContextTypes.DEFAULT_TYP
     keyboard = [
         [InlineKeyboardButton("🛒 Services", callback_data='admin_menu_core_edit_services')],
         [InlineKeyboardButton("💰 Balance", callback_data='admin_menu_core_edit_balance')],
+        [InlineKeyboardButton("📥 Deposit", callback_data='admin_menu_core_edit_deposit')],
+        [InlineKeyboardButton("📤 Withdraw", callback_data='admin_menu_core_edit_withdraw')],
         [InlineKeyboardButton("👤 Profile", callback_data='admin_menu_core_edit_profile')],
         [InlineKeyboardButton("🔗 Referral", callback_data='admin_menu_core_edit_referral')],
         [InlineKeyboardButton("💸 Transfer", callback_data='admin_menu_core_edit_transfer')],
+        [InlineKeyboardButton("🎫 Promo code", callback_data='admin_menu_core_edit_promo_code')],
         [InlineKeyboardButton("🆘 Support", callback_data='admin_menu_core_edit_support')],
         [InlineKeyboardButton("◀️ Назад", callback_data='admin_menu_editor')],
     ]

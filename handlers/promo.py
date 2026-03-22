@@ -31,16 +31,35 @@ async def _edit_or_send(query, text, reply_markup=None, parse_mode=None, **kwarg
             **kwargs
         )
 
+async def _edit_or_send_with_core_photo(query, text, core_key: str, reply_markup=None, parse_mode=None, **kwargs):
+    photo_file_id = (db.get_main_menu_core().get(core_key, {}) or {}).get('photo_file_id')
+    if not photo_file_id:
+        return await _edit_or_send(query, text, reply_markup=reply_markup, parse_mode=parse_mode, **kwargs)
+
+    try:
+        await query.message.delete()
+    except Exception:
+        pass
+    return await query.get_bot().send_photo(
+        chat_id=query.message.chat_id,
+        photo=photo_file_id,
+        caption=text,
+        reply_markup=reply_markup,
+        parse_mode=parse_mode,
+        **kwargs
+    )
+
+
 
 async def handle_promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
 
     db.set_pending_action(user.id, 'enter_promo')
-
-    await _edit_or_send(
+    await _edit_or_send_with_core_photo(
         query,
         "🎫 <b>Введите промокод</b>\n\nОтправьте промокод в чат:",
+        'promo_code',
         reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton("❌ Отмена", callback_data='balance')
         ]]),

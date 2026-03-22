@@ -80,7 +80,7 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(get_text('back', user.id), callback_data='menu')]
     ]
     
-    await _edit_or_send_with_core_photo(query, 
+    await _edit_or_send_with_core_photo(query,
         text,
         'balance',
         reply_markup=InlineKeyboardMarkup(keyboard),
@@ -92,7 +92,12 @@ async def handle_deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
     text = f"💰 {get_text('choose_deposit_currency', user.id)}"
-    await _edit_or_send(query, text, reply_markup=currency_menu(user.id))
+    await _edit_or_send_with_core_photo(
+        query,
+        text,
+        'deposit',
+        reply_markup=currency_menu(user.id)
+    )
 
 async def handle_currency_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, currency):
     """Обработка выбора валюты"""
@@ -302,8 +307,9 @@ async def handle_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"{get_text('withdraw_contact', user.id)}: {ADMIN_CONTACT}\n\n"
         f"<i>{get_text('withdraw_rules', user.id)}</i>"
     )
-    await _edit_or_send(query, 
+    await _edit_or_send_with_core_photo(query,
         text,
+        'withdraw',
         reply_markup=back_button('balance'),
         parse_mode='HTML'
     )
