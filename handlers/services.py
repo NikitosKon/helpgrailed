@@ -154,8 +154,15 @@ def _compact_button_name(name: str, limit: int = 34) -> str:
     return clean[: limit - 1].rstrip() + '…'
 
 
+def _button_prefix(text: str) -> str:
+    clean = (text or '').strip()
+    if clean.startswith('· '):
+        return clean
+    return f'· {clean}'
+
+
 def _product_button_text(name: str, price: float, stock: int, user_id: int) -> str:
-    short_name = _compact_button_name(name)
+    short_name = _button_prefix(_compact_button_name(name))
     if price is not None and price < 0:
         return f"{short_name} - {get_text('details_button', user_id)}"
     stock_label = _stock_str(stock)
@@ -210,7 +217,7 @@ async def handle_category(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
             text = f"{cat_name}\n\n{get_text('choose_subcategory', user.id)}"
 
             keyboard = [
-                [InlineKeyboardButton(subcat_name, callback_data=f"subcat|{category}|{subcat_id}")]
+                [InlineKeyboardButton(_button_prefix(subcat_name), callback_data=f"subcat|{category}|{subcat_id}")]
                 for subcat_id, subcat_name in subcats.items()
             ]
             keyboard.append([InlineKeyboardButton(get_text('back', user.id), callback_data='services')])
